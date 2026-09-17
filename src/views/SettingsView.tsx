@@ -13,6 +13,10 @@ import {
   Image,
   LogOut,
   LogIn,
+  AlertTriangle,
+  FileSpreadsheet,
+  Check,
+  X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -25,7 +29,11 @@ export const SettingsView: React.FC = () => {
     loginWithGoogle,
     logout,
     showToast,
+    resetSales,
+    resetStock,
+    resetCustomers,
     resetAllData,
+    resetToFactorySettings,
   } = useApp();
 
   // User Profile State
@@ -65,10 +73,38 @@ export const SettingsView: React.FC = () => {
     });
   };
 
-  const handleResetData = () => {
-    if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการล้างข้อมูลและคืนค่าโรงงาน? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
-      resetAllData();
-      window.location.reload();
+  const [showConfirmResetModal, setShowConfirmResetModal] = useState(false);
+  const [resetKeepCatalog, setResetKeepCatalog] = useState(false);
+  const [confirmInput, setConfirmInput] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+
+  const handleExecuteFactoryReset = async () => {
+    if (confirmInput.trim().toUpperCase() !== 'RESET') {
+      showToast('กรุณาพิมพ์คำว่า RESET เพื่อยืนยันการล้างข้อมูล', 'error');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      await resetToFactorySettings(resetKeepCatalog);
+      setShowConfirmResetModal(false);
+      setConfirmInput('');
+      setTimeout(() => {
+        window.location.reload();
+      }, 700);
+    } catch (err) {
+      setIsResetting(false);
+    }
+  };
+
+  const handleQuickResetSales = () => {
+    if (window.confirm('คุณต้องการล้างเฉพาะ "ประวัติบิลขายและยอดขายทั้งหมด" ใช่หรือไม่? (สินค้าและข้อมูลสต็อกจะไม่หาย)')) {
+      resetSales();
+    }
+  };
+
+  const handleQuickResetStock = () => {
+    if (window.confirm('คุณต้องการรีเซ็ตเฉพาะ "สต็อกคงเหลือและประวัติการรับเข้าสินค้าทั้งหมดเป็น 0" ใช่หรือไม่? (ยอดขายจะไม่หาย)')) {
+      resetStock();
     }
   };
 
@@ -97,7 +133,15 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {userSession.email ? (
+            <button
+              type="button"
+              onClick={loginWithGoogle}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 flex items-center gap-1.5 transition-colors font-medium text-[11px]"
+            >
+              <LogIn className="w-3.5 h-3.5 text-amber-400" />
+              <span>{userSession.email ? 'สลับบัญชี Google' : 'เข้าสู่ระบบด้วย Google'}</span>
+            </button>
+            {userSession.email && (
               <button
                 type="button"
                 onClick={logout}
@@ -105,15 +149,6 @@ export const SettingsView: React.FC = () => {
               >
                 <LogOut className="w-3.5 h-3.5 text-slate-400" />
                 <span>ออกจากระบบ</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={loginWithGoogle}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 flex items-center gap-1.5 transition-colors font-medium text-[11px]"
-              >
-                <LogIn className="w-3.5 h-3.5 text-amber-400" />
-                <span>เข้าสู่ระบบ</span>
               </button>
             )}
           </div>
@@ -263,24 +298,179 @@ export const SettingsView: React.FC = () => {
         </div>
       </form>
 
-      {/* Danger Zone */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-red-200 space-y-3 text-xs">
-        <div className="flex items-center gap-2 text-rose-600 font-bold text-base border-b border-rose-100 pb-2">
-          <Trash2 className="w-5 h-5" />
-          <span>การจัดการฐานข้อมูลเครื่อง (Reset Database)</span>
+      {/* Danger Zone: Comprehensive Factory Reset & Subsystem Reset */}
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-rose-200 space-y-4 text-xs">
+        <div className="flex items-center justify-between border-b border-rose-100 pb-3">
+          <div className="flex items-center gap-2 text-rose-600 font-bold text-base">
+            <Trash2 className="w-5 h-5" />
+            <span>การจัดการฐานข้อมูลและการคืนค่าโรงงาน (Factory Reset)</span>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold tracking-wider uppercase">
+            Danger Zone
+          </span>
         </div>
-        <p className="text-slate-500">
-          หากต้องการล้างข้อมูลการขาย ลูกค้า และสต็อกที่บันทึกไว้ในเบราว์เซอร์นี้ทั้งหมดเพื่อเริ่มต้นระบบใหม่
+
+        <p className="text-slate-600 leading-relaxed">
+          ท่านสามารถเลือกล้างข้อมูลเฉพาะจุด (เช่น ล้างบิลขายเมื่อเริ่มต้นเดือนใหม่ หรือล้างสต็อก) หรือกดปุ่ม <strong>"ล้างข้อมูลและคืนค่าโรงงาน (Factory Reset)"</strong> เพื่อลบข้อมูลทุกอย่างในเครื่องทั้งหมด 100%
         </p>
-        <button
-          type="button"
-          onClick={handleResetData}
-          className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold px-4 py-2.5 rounded-xl transition-colors flex items-center gap-2"
-        >
-          <RotateCcw className="w-4 h-4" />
-          <span>ล้างข้อมูลและคืนค่าโรงงาน (Factory Reset)</span>
-        </button>
+
+        {/* Quick Granular Resets */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <div>
+              <div className="font-semibold text-slate-800 text-[11px]">ล้างเฉพาะประวัติยอดขาย</div>
+              <div className="text-[10px] text-slate-500">ลบบิลขายทั้งหมด โดยไม่กระทบแคตตาล็อกสินค้า</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleQuickResetSales}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-[11px] font-semibold transition-colors shrink-0 ml-2"
+            >
+              ล้างยอดขาย
+            </button>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+            <div>
+              <div className="font-semibold text-slate-800 text-[11px]">รีเซ็ตสต็อกสินค้าเป็น 0</div>
+              <div className="text-[10px] text-slate-500">ล้างยอดสต็อกคงคลังและประวัติการรับเข้าทั้งหมดเป็น 0</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleQuickResetStock}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-[11px] font-semibold transition-colors shrink-0 ml-2"
+            >
+              รีเซ็ตสต็อก
+            </button>
+          </div>
+        </div>
+
+        {/* Full Factory Reset Trigger */}
+        <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-rose-50/60 p-4 rounded-2xl border border-rose-100">
+          <div>
+            <div className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-rose-600" />
+              ล้างข้อมูลจากโรงงาน (Full Factory Reset)
+            </div>
+            <div className="text-[11px] text-rose-700/80 mt-0.5">
+              ล้างทุกอย่างใน LocalStorage: บิลขาย, ลูกค้า, สต็อก, เป้าหมาย, การเชื่อมต่อ Google และเริ่มระบบใหม่อย่างสมบูรณ์
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmInput('');
+              setShowConfirmResetModal(true);
+            }}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-2 shrink-0 hover:shadow-md active:scale-95"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>ล้างข้อมูลและคืนค่าโรงงาน</span>
+          </button>
+        </div>
       </div>
+
+      {/* Factory Reset Modal Confirmation */}
+      {showConfirmResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-rose-200 overflow-hidden space-y-4 p-6">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5 text-rose-600 font-bold text-base">
+                <div className="w-9 h-9 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-slate-900 text-sm font-bold">ยืนยันการคืนค่าโรงงาน (Factory Reset)</h3>
+                  <p className="text-[11px] text-slate-500 font-normal">การกระทำนี้จะลบข้อมูลในเครื่องถาวร</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfirmResetModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600">
+              <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-3.5 text-amber-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                  ⚠️ รายการที่จะถูกลบ:
+                </div>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-800/90 pl-1">
+                  <li>ยอดขาย บิลขาย และประวัติการขายทั้งหมด</li>
+                  <li>สต็อกสินค้า และประวัติการรับสต็อกเข้าทุกรายการ</li>
+                  <li>ฐานข้อมูลลูกค้าสัมพันธ์ (CRM)</li>
+                  <li>เป้าหมายการขายและส่วนแบ่งตลาด (Market Share)</li>
+                  <li>การตั้งค่าร้านค้าและรหัสเชื่อมต่อ Google Sheets</li>
+                </ul>
+              </div>
+
+              {/* Option to keep Catalog items */}
+              <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50/70 cursor-pointer hover:bg-slate-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={resetKeepCatalog}
+                  onChange={(e) => setResetKeepCatalog(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+                />
+                <div>
+                  <div className="font-semibold text-slate-800 text-[11px]">
+                    คงฐานข้อมูลแคตตาล็อกสินค้า (Product Catalog) ไว้
+                  </div>
+                  <div className="text-[10px] text-slate-500">
+                    หากติ๊กช่องนี้ จะไม่ต้องนำเข้าไฟล์ Excel รายการสีใหม่ ระบบจะล้างเฉพาะยอดขายและสต็อก
+                  </div>
+                </div>
+              </label>
+
+              {/* Confirmation Input Field */}
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-[11px] font-semibold text-slate-700">
+                  พิมพ์คำว่า <span className="font-bold text-rose-600 uppercase">RESET</span> เพื่อยืนยัน:
+                </label>
+                <input
+                  type="text"
+                  value={confirmInput}
+                  onChange={(e) => setConfirmInput(e.target.value)}
+                  placeholder="พิมพ์ RESET"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl bg-white text-center font-bold tracking-widest text-slate-900 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowConfirmResetModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-100 transition-colors text-xs"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={confirmInput.trim().toUpperCase() !== 'RESET' || isResetting}
+                onClick={handleExecuteFactoryReset}
+                className={`flex-1 py-2.5 rounded-xl text-white font-bold transition-all text-xs flex items-center justify-center gap-1.5 ${
+                  confirmInput.trim().toUpperCase() === 'RESET' && !isResetting
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-200 cursor-pointer active:scale-95'
+                    : 'bg-slate-300 cursor-not-allowed text-slate-500'
+                }`}
+              >
+                {isResetting ? (
+                  <span>กำลังล้างข้อมูล...</span>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>ยืนยันล้างข้อมูล</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -8,7 +8,7 @@ import {
 import { useApp } from '../../context/AppContext';
 
 export const BulkStockModal: React.FC = () => {
-  const { modalOpen, setModalOpen, products, bulkAddStock } = useApp();
+  const { modalOpen, setModalOpen, products, bulkAddStockIn } = useApp();
   const [selectedProductId, setSelectedProductId] = useState(products[0]?.id || '');
   const [size, setSize] = useState('5GL');
   const [base, setBase] = useState('A');
@@ -23,9 +23,12 @@ export const BulkStockModal: React.FC = () => {
     e.preventDefault();
     if (!product) return;
 
-    bulkAddStock([
+    bulkAddStockIn([
       {
+        date: new Date().toISOString().split('T')[0],
         productId: product.id,
+        productName: product.name,
+        sku: product.sku,
         size: size as any,
         base: product.hasBases ? (base as any) : undefined,
         quantity,

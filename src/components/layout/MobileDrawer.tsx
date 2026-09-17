@@ -13,6 +13,7 @@ import {
   Upload,
   RefreshCw,
   LogOut,
+  LogIn,
   Smartphone,
   ChevronRight,
   TrendingUp,
@@ -32,6 +33,8 @@ export const MobileDrawer: React.FC = () => {
     userSession,
     isOnline,
     setModalOpen,
+    loginWithGoogle,
+    logout,
   } = useApp();
 
   if (!openDrawer) return null;
@@ -91,24 +94,47 @@ export const MobileDrawer: React.FC = () => {
         </div>
 
         {/* User Card */}
-        <div className="px-4 py-3 bg-slate-950/30 border-b border-slate-800/60 flex items-center gap-3">
-          <div className="relative">
-            {userSession.avatar ? (
-              <img src={userSession.avatar} alt="" className="w-9 h-9 rounded-full object-cover ring-1 ring-slate-700" />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm">
-                {userSession.name.charAt(0)}
-              </div>
-            )}
-            <span
-              className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
-                isOnline ? 'bg-emerald-500' : 'bg-rose-500'
-              }`}
-            />
+        <div className="px-4 py-3 bg-slate-950/40 border-b border-slate-800/60 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              {userSession.avatar ? (
+                <img src={userSession.avatar} alt="" className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500/30" />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm">
+                  {userSession.name.charAt(0)}
+                </div>
+              )}
+              <span
+                className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
+                  isOnline ? 'bg-emerald-500' : 'bg-rose-500'
+                }`}
+              />
+            </div>
+            <div className="overflow-hidden flex-1">
+              <div className="text-xs font-semibold text-white truncate">{userSession.name}</div>
+              <div className="text-[11px] text-slate-400 truncate">{userSession.email || 'ยังไม่ได้เข้าสู่ระบบ'}</div>
+            </div>
           </div>
-          <div className="overflow-hidden flex-1">
-            <div className="text-xs font-semibold text-white truncate">{userSession.name}</div>
-            <div className="text-[11px] text-slate-400 truncate">{userSession.email || 'ออฟไลน์'}</div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => {
+                loginWithGoogle();
+              }}
+              className="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors border border-slate-700/60"
+            >
+              <LogIn className="w-3.5 h-3.5 text-amber-400" />
+              <span>สลับ / ล็อกอิน Google</span>
+            </button>
+            {userSession.email && (
+              <button
+                onClick={() => logout()}
+                className="p-1.5 rounded-xl bg-slate-800/60 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition-colors"
+                title="ออกจากระบบ"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 

@@ -2,6 +2,7 @@
 export const STORAGE_PREFIX = 'salepaint_v1_';
 
 export const StorageKeys = {
+  INITIALIZED: `${STORAGE_PREFIX}initialized`,
   CATALOG_ITEMS: `${STORAGE_PREFIX}catalogItems`,
   PRODUCTS: `${STORAGE_PREFIX}products`,
   SALES: `${STORAGE_PREFIX}sales`,
@@ -17,6 +18,14 @@ export const StorageKeys = {
   USER_SESSION: `${STORAGE_PREFIX}userSession`,
   GOOGLE_SHEET_CONFIG: `${STORAGE_PREFIX}googleSheetConfig`,
 };
+
+export function hasStoredKey(key: string): boolean {
+  try {
+    return localStorage.getItem(key) !== null;
+  } catch {
+    return false;
+  }
+}
 
 export function getStoredData<T>(key: string, defaultValue: T): T {
   try {
@@ -40,11 +49,22 @@ export function setStoredData<T>(key: string, value: T): void {
 export function clearNamespaceData(): void {
   try {
     Object.keys(localStorage).forEach((key) => {
-      if (key.startsWith(STORAGE_PREFIX)) {
+      if (key.startsWith(STORAGE_PREFIX) || key.startsWith('salepaint_')) {
         localStorage.removeItem(key);
       }
     });
   } catch (err) {
     console.error('[LocalStorage] Failed to clear namespaced data', err);
+  }
+}
+
+export function clearAllStorageData(): void {
+  try {
+    // Clear all LocalStorage
+    localStorage.clear();
+    // Clear SessionStorage if any
+    sessionStorage.clear();
+  } catch (err) {
+    console.error('[LocalStorage] Failed to clear all storage data', err);
   }
 }

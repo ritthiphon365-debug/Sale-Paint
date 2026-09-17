@@ -15,6 +15,7 @@ import {
   Upload,
   RefreshCw,
   LogOut,
+  LogIn,
   ChevronRight,
   Sparkles,
   Sheet,
@@ -29,6 +30,7 @@ export const Sidebar: React.FC = () => {
     brandSettings,
     userSession,
     isOnline,
+    loginWithGoogle,
     logout,
     setModalOpen,
   } = useApp();
@@ -145,46 +147,68 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* User Card */}
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800/80">
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="flex items-center gap-2.5 overflow-hidden text-left flex-1 hover:opacity-85 transition-opacity"
-            title="คลิกเพื่อแก้ไขโปรไฟล์ในหน้าการตั้งค่า"
-          >
-            <div className="relative shrink-0">
-              {userSession.avatar ? (
-                <img
-                  src={userSession.avatar}
-                  alt={userSession.name}
-                  className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700"
+        <div className="p-2.5 rounded-2xl bg-slate-900 border border-slate-800/80 space-y-2">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="flex items-center gap-2.5 overflow-hidden text-left flex-1 hover:opacity-85 transition-opacity"
+              title="คลิกเพื่อแก้ไขโปรไฟล์ในหน้าการตั้งค่า"
+            >
+              <div className="relative shrink-0">
+                {userSession.avatar ? (
+                  <img
+                    src={userSession.avatar}
+                    alt={userSession.name}
+                    className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-xs font-semibold">
+                    {userSession.name.charAt(0)}
+                  </div>
+                )}
+                <span
+                  className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
+                    isOnline ? 'bg-emerald-500' : 'bg-rose-500'
+                  }`}
                 />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-xs font-semibold">
-                  {userSession.name.charAt(0)}
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-xs font-medium text-white truncate">
+                  {userSession.name}
                 </div>
-              )}
-              <span
-                className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
-                  isOnline ? 'bg-emerald-500' : 'bg-rose-500'
-                }`}
-              />
-            </div>
-            <div className="overflow-hidden">
-              <div className="text-xs font-medium text-white truncate">
-                {userSession.name}
+                <div className="text-[10px] text-slate-400 truncate">
+                  {userSession.email || 'ยังไม่ได้ล็อกอิน'}
+                </div>
               </div>
-              <div className="text-[10px] text-slate-400 truncate">
-                {userSession.email || (isOnline ? 'Online / พร้อมใช้งาน' : 'Offline')}
-              </div>
-            </div>
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors shrink-0 ml-1"
-            title="แก้ไขข้อมูลผู้ใช้ (Settings)"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
+              title="แก้ไขข้อมูลผู้ใช้ (Settings)"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <button
+              onClick={() => loginWithGoogle()}
+              className="flex-1 py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-medium flex items-center justify-center gap-1.5 transition-colors border border-slate-700/60"
+              title="กดเพื่อสลับหรือเข้าสู่ระบบด้วย Google"
+            >
+              <LogIn className="w-3 h-3 text-amber-400" />
+              <span>สลับ / ล็อกอิน Google</span>
+            </button>
+            {userSession.email && (
+              <button
+                onClick={() => logout()}
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition-colors"
+                title="ออกจากระบบ"
+              >
+                <LogOut className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </aside>

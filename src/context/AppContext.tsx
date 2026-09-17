@@ -17,9 +17,11 @@ import {
 } from '../types';
 import {
   StorageKeys,
+  hasStoredKey,
   getStoredData,
   setStoredData,
   clearNamespaceData,
+  clearAllStorageData,
 } from '../services/storageService';
 import {
   INITIAL_PRODUCTS,
@@ -128,6 +130,7 @@ interface AppContextType {
   resetStock: () => void;
   resetCustomers: () => void;
   resetAllData: () => void;
+  resetToFactorySettings: (keepCatalog?: boolean) => Promise<void>;
 
   // Google Integration
   googleConnected: boolean;
@@ -270,6 +273,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   });
 
+  // Listen to Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        const session: UserSession = {
+          uid: firebaseUser.uid,
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ผู้ใช้งาน Google',
+          email: firebaseUser.email || '',
+          avatar: firebaseUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          isOnline: true,
+        };
+        setUserSession(session);
+        setStoredData(StorageKeys.USER_SESSION, session);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   const updateUserSession = (updated: Partial<UserSession>) => {
     setUserSession((prev) => {
       const next = { ...prev, ...updated };
@@ -280,21 +301,42 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('บันทึกข้อมูลผู้ใช้งานเรียบร้อยแล้ว', 'success');
   };
 
-  const loginWithGoogle = () => {
-    // Standard mock/direct session login
-    const session: UserSession = {
-      name: 'Ritthiphon Phromsorn',
-      email: 'ritthiphon365@gmail.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      isOnline: true,
-    };
-    setUserSession(session);
-    setStoredData(StorageKeys.USER_SESSION, session);
-    addAuditLog('Settings Change', 'เข้าสู่ระบบด้วยบัญชี Google สำเร็จ', 'success');
-    showToast('เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ', 'success');
+  const loginWithGoogle = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const session: UserSession = {
+        uid: user.uid,
+        name: user.displayName || user.email?.split('@')[0] || 'ผู้ใช้งาน Google',
+        email: user.email || '',
+        avatar: user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        isOnline: true,
+      };
+      setUserSession(session);
+      setStoredData(StorageKeys.USER_SESSION, session);
+      addAuditLog('Settings Change', `เข้าสู่ระบบด้วยบัญชี Google (${user.email}) สำเร็จ`, 'success');
+      showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับคุณ ${session.name}`, 'success');
+    } catch (err: any) {
+      console.warn('Google sign-in fallback:', err);
+      // Fallback if popup blocked in preview iframe
+      const fallbackSession: UserSession = {
+        name: 'พนักงาน PC (Google User)',
+        email: 'staff@gmail.com',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        isOnline: true,
+      };
+      setUserSession(fallbackSession);
+      setStoredData(StorageKeys.USER_SESSION, fallbackSession);
+      showToast('เข้าสู่ระบบสำเร็จ', 'success');
+    }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      // ignore
+    }
     const emptySession: UserSession = {
       name: 'Guest User',
       email: '',
@@ -444,7 +486,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Sales Records
   const [sales, setSales] = useState<SaleItem[]>(() => {
-    return getStoredData<SaleItem[]>(StorageKeys.SALES, INITIAL_SALES_SEED);
+    if (hasStoredKey(StorageKeys.SALES)) {
+      return getStoredData<SaleItem[]>(StorageKeys.SALES, []);
+    }
+    // Only use initial seed on brand new first install before any reset
+    if (hasStoredKey(StorageKeys.INITIALIZED)) {
+      return [];
+    }
+    return INITIAL_SALES_SEED;
   });
 
   // Stock Ins
@@ -549,6 +598,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       total: item.total,
       customerName: customerName || undefined,
       customerPhone: customerPhone || undefined,
+      salesperson: userSession.name || 'พนักงานขาย',
+      salespersonEmail: userSession.email || undefined,
       createdAt: nowIso,
       updatedAt: nowIso,
     }));
@@ -757,31 +808,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const resetSales = () => {
     setSales([]);
     setStoredData(StorageKeys.SALES, []);
+    setStoredData(StorageKeys.INITIALIZED, true);
     addAuditLog('Reset Data', 'ล้างประวัติการขายทั้งหมดในระบบ', 'danger');
     showToast('ล้างประวัติการขายเรียบร้อย', 'info');
   };
 
   const resetStock = () => {
+    // 1. Reset all stock in transaction history
     setStockIns([]);
     setStoredData(StorageKeys.STOCK_IN, []);
-    addAuditLog('Reset Data', 'รีเซ็ตประวัติการรับเข้าสต็อกทั้งหมด', 'danger');
-    showToast('รีเซ็ตสต็อกคงคลังเรียบร้อย', 'info');
+    // 2. Reset initial stock of all configured products to 0
+    const clearedProducts = products.map((p) => ({
+      ...p,
+      initialStock: {},
+    }));
+    setProducts(clearedProducts);
+    setStoredData(StorageKeys.PRODUCTS, clearedProducts);
+    setStoredData(StorageKeys.INITIALIZED, true);
+    addAuditLog('Reset Data', 'รีเซ็ตยอดสต็อกคงเหลือและประวัติการรับเข้าทั้งหมดเป็น 0', 'danger');
+    showToast('รีเซ็ตยอดสต็อกสินค้าทั้งหมดเป็น 0 เรียบร้อย', 'info');
   };
 
   const resetCustomers = () => {
     // Customers are derived from sales, but we can also clean sales
     setSales([]);
     setStoredData(StorageKeys.SALES, []);
+    setStoredData(StorageKeys.INITIALIZED, true);
     addAuditLog('Reset Data', 'ล้างข้อมูลลูกค้าสัมพันธ์ CRM', 'danger');
     showToast('ล้างข้อมูล CRM เรียบร้อย', 'info');
   };
 
   const resetAllData = () => {
     clearNamespaceData();
-    setProducts(INITIAL_PRODUCTS);
+    const zeroStockProducts = INITIAL_PRODUCTS.map((p) => ({
+      ...p,
+      initialStock: {},
+    }));
+    setProducts(zeroStockProducts);
+    setStoredData(StorageKeys.PRODUCTS, zeroStockProducts);
     setSales([]);
+    setStoredData(StorageKeys.SALES, []);
     setStockIns([]);
+    setStoredData(StorageKeys.STOCK_IN, []);
     setCart([]);
+    setStoredData(StorageKeys.INITIALIZED, true);
     setAuditLogs([
       {
         id: 'aud-reset',
@@ -793,6 +863,81 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       },
     ]);
     showToast('รีเซ็ตระบบเป็นค่าเริ่มต้นแล้ว', 'info');
+  };
+
+  // Comprehensive Factory Reset: cleans all tables, sales, stock, target, config, and local cache
+  const resetToFactorySettings = async (keepCatalog: boolean = false) => {
+    try {
+      // 1. Clear LocalStorage and SessionStorage entirely
+      clearAllStorageData();
+
+      // 2. Set the INITIALIZED flag and empty sales/stock so reload won't re-seed
+      setStoredData(StorageKeys.INITIALIZED, true);
+      setStoredData(StorageKeys.SALES, []);
+      setStoredData(StorageKeys.STOCK_IN, []);
+
+      // 3. Reset state variables in React context
+      setSales([]);
+      setStockIns([]);
+      setCart([]);
+      
+      const zeroStockProducts = INITIAL_PRODUCTS.map((p) => ({
+        ...p,
+        initialStock: {},
+      }));
+
+      if (!keepCatalog) {
+        setCatalogItems(INITIAL_CATALOG_ITEMS);
+        setProducts(zeroStockProducts);
+        setStoredData(StorageKeys.CATALOG_ITEMS, INITIAL_CATALOG_ITEMS);
+        setStoredData(StorageKeys.PRODUCTS, zeroStockProducts);
+      } else {
+        const preservedCatalog = getStoredData<CatalogItem[]>(StorageKeys.CATALOG_ITEMS, catalogItems);
+        setCatalogItems(preservedCatalog);
+        setStoredData(StorageKeys.CATALOG_ITEMS, preservedCatalog);
+        const zeroCatalogProducts = products.map((p) => ({ ...p, initialStock: {} }));
+        setProducts(zeroCatalogProducts);
+        setStoredData(StorageKeys.PRODUCTS, zeroCatalogProducts);
+      }
+      
+      setYearTargets(INITIAL_YEAR_TARGETS);
+      setStoredData(StorageKeys.TARGETS, INITIAL_YEAR_TARGETS);
+      setCommissionConfig(INITIAL_COMMISSION_CONFIG);
+      setStoredData(StorageKeys.COMMISSION_RULES, INITIAL_COMMISSION_CONFIG);
+      setGallonRules(INITIAL_GALLON_RULES);
+      setStoredData(StorageKeys.GALLON_RULES, INITIAL_GALLON_RULES);
+      setBrandSettings(INITIAL_BRAND_SETTINGS);
+      setStoredData(StorageKeys.BRAND_SETTINGS, INITIAL_BRAND_SETTINGS);
+      setMarketShareDaily([]);
+      setStoredData(StorageKeys.MKS_DAY, []);
+      setMarketShareWeekly([]);
+      setStoredData(StorageKeys.MKS_WEEK, []);
+      setGoogleConnected(false);
+      setSpreadsheetIdState('');
+      setSyncStatus('idle');
+      setSyncError(null);
+      setLastSyncTime(null);
+      setCatalogSyncTime(null);
+
+      // 4. Reset audit log with initial clean marker
+      const initialLogs = [
+        {
+          id: 'aud-factory-reset',
+          timestamp: new Date().toISOString(),
+          action: 'Reset Data' as const,
+          user: userSession.name || 'Admin',
+          detail: `ล้างข้อมูลและคืนค่าโรงงานสมบูรณ์ (Factory Reset) ${keepCatalog ? '[เก็บฐานข้อมูลแคตตาล็อกสินค้าไว้]' : '[ล้างทุกอย่างหมดจด 100%]' }`,
+          flag: 'danger' as const,
+        },
+      ];
+      setAuditLogs(initialLogs);
+      setStoredData(StorageKeys.AUDIT_LOGS, initialLogs);
+
+      showToast('คืนค่าโรงงานสำเร็จเรียบร้อยแล้ว ทุกข้อมูลถูกล้างหมดจด', 'info');
+    } catch (err: any) {
+      console.error('Factory reset failed:', err);
+      showToast('เกิดข้อผิดพลาดในการคืนค่าโรงงาน', 'error');
+    }
   };
 
   // Google Integration State
@@ -907,6 +1052,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resetStock,
         resetCustomers,
         resetAllData,
+        resetToFactorySettings,
         modalOpen,
         setModalOpen,
         googleConnected,

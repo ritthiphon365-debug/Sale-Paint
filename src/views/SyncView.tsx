@@ -7,6 +7,8 @@ import {
   RefreshCw,
   ExternalLink,
   ShieldCheck,
+  Users,
+  Clock,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -152,26 +154,55 @@ export const SyncView: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {/* Multi-PC Shared Google Spreadsheet Explanation Card */}
+      <div className="bg-gradient-to-br from-indigo-50/70 via-white to-sky-50/50 rounded-3xl p-6 border border-indigo-100/80 shadow-xs space-y-3 text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center">
+            <Users className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-slate-900">
+              แบบที่ 1: พนักงาน 2 คน (หรือหลายคน) ล็อกอินคนละบัญชี แต่ลงใน Spreadsheet เดียวกัน
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              คู่มือและวิธีเชื่อมต่อสำหรับร้านค้าและหัวหน้าทีม
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+          <div className="bg-white/90 p-3.5 rounded-2xl border border-slate-200/80">
+            <div className="font-semibold text-slate-800 flex items-center gap-1.5 mb-1 text-[11px]">
+              <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 font-bold flex items-center justify-center text-[10px]">1</span>
+              แชร์สิทธิ์ไฟล์ Google Sheet
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              เจ้าของไฟล์สร้าง Google Sheets ขึ้นมา 1 ไฟล์ แล้วกดปุ่ม <strong>"แชร์ (Share)"</strong> โดยเพิ่มอีเมล Google ของพนักงานทั้ง 2 คน ให้มีสิทธิ์ <strong>ผู้แก้ไข (Editor)</strong>
+            </p>
+          </div>
+
+          <div className="bg-white/90 p-3.5 rounded-2xl border border-slate-200/80">
+            <div className="font-semibold text-slate-800 flex items-center gap-1.5 mb-1 text-[11px]">
+              <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 font-bold flex items-center justify-center text-[10px]">2</span>
+              ใส่ Sheet ID เดียวกัน
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              นำ ID หรือ URL ของไฟล์เดียวกันนี้ ไปใส่ในช่อง <strong>"ตั้งค่า Google Spreadsheet ปลายทาง"</strong> บนเครื่องของพนักงานทั้ง 2 คน
+            </p>
+          </div>
+
+          <div className="bg-white/90 p-3.5 rounded-2xl border border-slate-200/80">
+            <div className="font-semibold text-slate-800 flex items-center gap-1.5 mb-1 text-[11px]">
+              <span className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 font-bold flex items-center justify-center text-[10px]">3</span>
+              บันทึกแยกชื่อผู้ขายอัตโนมัติ
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              เมื่อแต่ละคนกดบันทึกหรือซิงค์ ข้อมูลจะถูกส่งไปต่อแถวใน Sheet กลาง พร้อมระบุชื่อและอีเมล <strong>Salesperson (PC)</strong> กำกับไว้ทุกบิล
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
-
-function Clock(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  );
-}
