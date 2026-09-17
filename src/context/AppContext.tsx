@@ -32,7 +32,7 @@ import {
   INITIAL_YEAR_TARGETS,
 } from '../mockData';
 import { GoogleSheetsService } from '../services/googleSheetsService';
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from '../lib/firebase';
+import { auth, googleProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from '../lib/firebase';
 import {
   computeStockInventory,
   computeCustomerCRM,
@@ -307,6 +307,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginWithGoogle = async () => {
     try {
+      // Firebase's Google provider is configured with prompt=select_account,
+      // so every explicit login/switch-account action opens Google's chooser.
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       const session: UserSession = {
@@ -321,17 +323,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addAuditLog('Settings Change', `เข้าสู่ระบบด้วยบัญชี Google (${user.email}) สำเร็จ`, 'success');
       showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับคุณ ${session.name}`, 'success');
     } catch (err: any) {
-      console.warn('Google sign-in fallback:', err);
-      // Fallback if popup blocked in preview iframe
-      const fallbackSession: UserSession = {
-        name: 'พนักงาน PC (Google User)',
-        email: 'staff@gmail.com',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        isOnline: true,
-      };
-      setUserSession(fallbackSession);
-      setStoredData(StorageKeys.USER_SESSION, fallbackSession);
-      showToast('เข้าสู่ระบบสำเร็จ', 'success');
+      console.warn('Google sign-in error:', err);
+
+      // Do NOT create a fake Google session. If the browser blocks popups,
+      // use Firebase redirect as a real authentication fallback.
+      if (err?.code === 'auth/popup-blocked') {
+        try {
+          showToast('กำลังเปิดหน้า Google เพื่อเลือกบัญชี...', 'info');
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr: any) {
+          console.error('Google redirect sign-in error:', redirectErr);
+          showToast('ไม่สามารถเปิด Google ได้ กรุณาอนุญาต Popup/Redirect แล้วลองใหม่', 'error');
+          return;
+        }
+      }
+
+      if (err?.code === 'auth/popup-closed-by-user') {
+        showToast('ยกเลิกการเข้าสู่ระบบ Google แล้ว', 'info');
+        return;
+      }
+
+      showToast(`เข้าสู่ระบบ Google ไม่สำเร็จ${err?.message ? `: ${err.message}` : ''}`, 'error');
     }
   };
 
@@ -643,65 +656,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   ): { added: number; replaced: number; skipped: number } => {
     setStoredData(StorageKeys.INITIALIZED, 'true');
 
-    // Include product variant and customer fields in the duplicate key. This avoids
-    // collapsing two legitimate lines that share the same SKU/quantity/total.
-    const saleSignature = (item: SaleItem) => [
-      item.billId,
-      item.date,
-      item.sku,
-      item.size,
-      item.base || '',
-      item.filmColor || '',
-      item.colorCode || '',
-      item.quantity,
-      item.price,
-      item.tintPrice,
-      item.total,
-      item.customerPhone || item.customerName || '',
-    ].map((v) => String(v).trim().toLowerCase()).join('|');
-
-    // De-duplicate the imported file itself before touching existing data.
-    const uniqueImported: SaleItem[] = [];
-    const importedSignatures = new Set<string>();
-    let skipped = 0;
-    importedItems.forEach((item) => {
-      const sig = saleSignature(item);
-      if (importedSignatures.has(sig)) {
-        skipped++;
-        return;
-      }
-      importedSignatures.add(sig);
-      uniqueImported.push(item);
-    });
-
     if (mode === 'replace') {
-      const sorted = [...uniqueImported].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const sorted = [...importedItems].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setSales(sorted);
       setStoredData(StorageKeys.SALES, sorted);
       addAuditLog(
         'Import Excel',
-        `แทนที่ประวัติยอดขายทั้งหมดด้วยไฟล์ Excel จากแอปเดิม จำนวน ${sorted.length} รายการ (ข้ามซ้ำ ${skipped} รายการ)`,
+        `แทนที่ประวัติยอดขายทั้งหมดด้วยไฟล์ Excel จากแอปเดิม จำนวน ${importedItems.length} รายการ`,
         'success'
       );
       showToast(
-        `นำเข้าและแทนที่ประวัติการขายสำเร็จ ${sorted.length} รายการ (ข้ามซ้ำ ${skipped} รายการ)`,
+        `นำเข้าและแทนที่ประวัติการขายสำเร็จ ${importedItems.length} รายการ`,
         'success'
       );
-      return { added: sorted.length, replaced: sorted.length, skipped };
+      return { added: importedItems.length, replaced: importedItems.length, skipped: 0 };
     } else {
       const existingIds = new Set(sales.map((s) => s.id));
-      const existingSignatures = new Set(sales.map(saleSignature));
+      const existingSignatures = new Set(sales.map((s) => `${s.billId}_${s.sku}_${s.date}_${s.quantity}_${s.total}`));
 
       const toAdd: SaleItem[] = [];
+      let skipped = 0;
 
-      uniqueImported.forEach((item) => {
-        const sig = saleSignature(item);
+      importedItems.forEach((item) => {
+        const sig = `${item.billId}_${item.sku}_${item.date}_${item.quantity}_${item.total}`;
         if (existingIds.has(item.id) || existingSignatures.has(sig)) {
           skipped++;
         } else {
           toAdd.push(item);
-          existingIds.add(item.id);
-          existingSignatures.add(sig);
         }
       });
 
