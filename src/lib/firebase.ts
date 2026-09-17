@@ -1,6 +1,6 @@
 // Firebase Client Initialization
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -11,8 +11,9 @@ export const googleProvider = new GoogleAuthProvider();
 
 // Request permissions/prompt for account selection
 googleProvider.setCustomParameters({
+  // Always show Google's account chooser instead of silently reusing the last account.
   prompt: 'select_account',
 });
 
-export { signInWithPopup, signOut, onAuthStateChanged };
+export { signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged };
 export type { User };
