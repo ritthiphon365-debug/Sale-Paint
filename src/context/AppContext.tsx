@@ -643,33 +643,65 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   ): { added: number; replaced: number; skipped: number } => {
     setStoredData(StorageKeys.INITIALIZED, 'true');
 
+    // Include product variant and customer fields in the duplicate key. This avoids
+    // collapsing two legitimate lines that share the same SKU/quantity/total.
+    const saleSignature = (item: SaleItem) => [
+      item.billId,
+      item.date,
+      item.sku,
+      item.size,
+      item.base || '',
+      item.filmColor || '',
+      item.colorCode || '',
+      item.quantity,
+      item.price,
+      item.tintPrice,
+      item.total,
+      item.customerPhone || item.customerName || '',
+    ].map((v) => String(v).trim().toLowerCase()).join('|');
+
+    // De-duplicate the imported file itself before touching existing data.
+    const uniqueImported: SaleItem[] = [];
+    const importedSignatures = new Set<string>();
+    let skipped = 0;
+    importedItems.forEach((item) => {
+      const sig = saleSignature(item);
+      if (importedSignatures.has(sig)) {
+        skipped++;
+        return;
+      }
+      importedSignatures.add(sig);
+      uniqueImported.push(item);
+    });
+
     if (mode === 'replace') {
-      const sorted = [...importedItems].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const sorted = [...uniqueImported].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setSales(sorted);
       setStoredData(StorageKeys.SALES, sorted);
       addAuditLog(
         'Import Excel',
-        `แทนที่ประวัติยอดขายทั้งหมดด้วยไฟล์ Excel จากแอปเดิม จำนวน ${importedItems.length} รายการ`,
+        `แทนที่ประวัติยอดขายทั้งหมดด้วยไฟล์ Excel จากแอปเดิม จำนวน ${sorted.length} รายการ (ข้ามซ้ำ ${skipped} รายการ)`,
         'success'
       );
       showToast(
-        `นำเข้าและแทนที่ประวัติการขายสำเร็จ ${importedItems.length} รายการ`,
+        `นำเข้าและแทนที่ประวัติการขายสำเร็จ ${sorted.length} รายการ (ข้ามซ้ำ ${skipped} รายการ)`,
         'success'
       );
-      return { added: importedItems.length, replaced: importedItems.length, skipped: 0 };
+      return { added: sorted.length, replaced: sorted.length, skipped };
     } else {
       const existingIds = new Set(sales.map((s) => s.id));
-      const existingSignatures = new Set(sales.map((s) => `${s.billId}_${s.sku}_${s.date}_${s.quantity}_${s.total}`));
+      const existingSignatures = new Set(sales.map(saleSignature));
 
       const toAdd: SaleItem[] = [];
-      let skipped = 0;
 
-      importedItems.forEach((item) => {
-        const sig = `${item.billId}_${item.sku}_${item.date}_${item.quantity}_${item.total}`;
+      uniqueImported.forEach((item) => {
+        const sig = saleSignature(item);
         if (existingIds.has(item.id) || existingSignatures.has(sig)) {
           skipped++;
         } else {
           toAdd.push(item);
+          existingIds.add(item.id);
+          existingSignatures.add(sig);
         }
       });
 
