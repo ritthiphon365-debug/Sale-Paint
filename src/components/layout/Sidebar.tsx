@@ -56,9 +56,11 @@ export const Sidebar: React.FC = () => {
       <div>
         <div className="p-5 border-b border-slate-800/80 bg-slate-950/40">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 via-rose-600 to-amber-600 flex items-center justify-center text-white font-bold shadow-md shadow-rose-950/40 shrink-0">
-              <Layers className="w-5 h-5" />
-            </div>
+            <img
+              src="./favicon.png"
+              alt="App Logo"
+              className="w-10 h-10 rounded-xl object-cover shadow-md shadow-rose-950/40 shrink-0 border border-slate-700/50"
+            />
             <div className="overflow-hidden">
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-base text-white tracking-wide truncate">

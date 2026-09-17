@@ -122,6 +122,7 @@ export const DashboardView: React.FC = () => {
         gap={targetGap}
         expectedMonthEndSales={expectedMonthEndSales}
         daysRemaining={daysRemaining}
+        onEditTarget={() => setModalOpen('target-manage')}
       />
 
       {/* Key Metric KPI Cards */}

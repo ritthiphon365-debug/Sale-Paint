@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Trophy, Flame, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Trophy, Flame, CheckCircle2, Edit2 } from 'lucide-react';
 
 interface PaintBucketVisualizerProps {
   currentSales: number;
@@ -8,6 +8,7 @@ interface PaintBucketVisualizerProps {
   gap: number;
   expectedMonthEndSales: number;
   daysRemaining: number;
+  onEditTarget?: () => void;
 }
 
 export const PaintBucketVisualizer: React.FC<PaintBucketVisualizerProps> = ({
@@ -17,10 +18,12 @@ export const PaintBucketVisualizer: React.FC<PaintBucketVisualizerProps> = ({
   gap,
   expectedMonthEndSales,
   daysRemaining,
+  onEditTarget,
 }) => {
   // Cap visual fill between 5% and 100% for aesthetic balance
-  const visualFill = Math.min(100, Math.max(8, achievementPercent));
-  const isTargetMet = achievementPercent >= 100;
+  const safePercent = isNaN(achievementPercent) ? 0 : achievementPercent;
+  const visualFill = Math.min(100, Math.max(8, safePercent));
+  const isTargetMet = safePercent >= 100;
 
   // Liquid color scheme
   const themeColor =
@@ -72,13 +75,24 @@ export const PaintBucketVisualizer: React.FC<PaintBucketVisualizerProps> = ({
             <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               ยอดขายสะสมเดือนนี้
             </h3>
-            <div className="flex items-baseline gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 font-mono">
                 ฿{currentSales.toLocaleString()}
               </span>
               <span className="text-sm font-semibold text-slate-400">
                 / เป้า ฿{targetSales.toLocaleString()}
               </span>
+              {onEditTarget && (
+                <button
+                  type="button"
+                  onClick={onEditTarget}
+                  className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-xs font-semibold flex items-center gap-1 transition-colors border border-slate-200 hover:border-rose-200 cursor-pointer"
+                  title="แก้ไขเป้าหมายเดือนนี้"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  <span>แก้ไขเป้า</span>
+                </button>
+              )}
             </div>
           </div>
 

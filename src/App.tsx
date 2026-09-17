@@ -24,6 +24,7 @@ import { TargetModal } from './components/modals/TargetModal';
 import { DailyBriefModal } from './components/modals/DailyBriefModal';
 import { WeeklyReviewModal } from './components/modals/WeeklyReviewModal';
 import { ImportExportModal } from './components/modals/ImportExportModal';
+import { ImportSalesModal } from './components/modals/ImportSalesModal';
 import { PwaInstallModal } from './components/modals/PwaInstallModal';
 import { AuditLogsModal } from './components/modals/AuditLogsModal';
 
@@ -114,6 +115,7 @@ const AppContent: React.FC = () => {
       <DailyBriefModal />
       <WeeklyReviewModal />
       <ImportExportModal />
+      <ImportSalesModal />
       <PwaInstallModal />
       <AuditLogsModal />
     </div>

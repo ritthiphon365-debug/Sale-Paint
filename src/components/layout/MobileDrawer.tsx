@@ -81,9 +81,16 @@ export const MobileDrawer: React.FC = () => {
       <div className="w-[85%] max-w-[340px] h-full bg-slate-900 text-slate-100 flex flex-col shadow-2xl border-l border-slate-800">
         {/* Drawer Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
-          <div>
-            <h2 className="font-bold text-white text-base">{brandSettings.brandName}</h2>
-            <p className="text-xs text-rose-400 font-medium">{brandSettings.badge}</p>
+          <div className="flex items-center gap-2.5">
+            <img
+              src="./favicon.png"
+              alt="App Logo"
+              className="w-8 h-8 rounded-lg object-cover border border-slate-700/50 shadow-xs"
+            />
+            <div>
+              <h2 className="font-bold text-white text-sm leading-tight">{brandSettings.brandName}</h2>
+              <p className="text-[11px] text-rose-400 font-medium">{brandSettings.badge}</p>
+            </div>
           </div>
           <button
             onClick={() => setOpenDrawer(false)}

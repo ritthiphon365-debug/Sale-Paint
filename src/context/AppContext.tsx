@@ -83,6 +83,10 @@ interface AppContextType {
   sales: SaleItem[];
   updateSale: (updated: SaleItem) => void;
   deleteSale: (saleId: string) => void;
+  importSalesHistory: (
+    items: SaleItem[],
+    mode: 'replace' | 'append'
+  ) => { added: number; replaced: number; skipped: number };
 
   // Stock
   stockIns: StockInRecord[];
@@ -105,7 +109,7 @@ interface AppContextType {
 
   // Targets & Yearly
   yearTargets: MonthTargetData[];
-  updateYearTarget: (month: number, year: number, target: number) => void;
+  updateYearTarget: (month: number, year: number, target: number, applyToAllMonths?: boolean) => void;
 
   // Market Share
   marketShareDaily: MarketShareRecord[];
@@ -633,6 +637,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('ลบรายการขายเรียบร้อยแล้ว', 'info');
   };
 
+  const importSalesHistory = (
+    importedItems: SaleItem[],
+    mode: 'replace' | 'append'
+  ): { added: number; replaced: number; skipped: number } => {
+    setStoredData(StorageKeys.INITIALIZED, 'true');
+
+    if (mode === 'replace') {
+      const sorted = [...importedItems].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setSales(sorted);
+      setStoredData(StorageKeys.SALES, sorted);
+      addAuditLog(
+        'Import Excel',
+        `แทนที่ประวัติยอดขายทั้งหมดด้วยไฟล์ Excel จากแอปเดิม จำนวน ${importedItems.length} รายการ`,
+        'success'
+      );
+      showToast(
+        `นำเข้าและแทนที่ประวัติการขายสำเร็จ ${importedItems.length} รายการ`,
+        'success'
+      );
+      return { added: importedItems.length, replaced: importedItems.length, skipped: 0 };
+    } else {
+      const existingIds = new Set(sales.map((s) => s.id));
+      const existingSignatures = new Set(sales.map((s) => `${s.billId}_${s.sku}_${s.date}_${s.quantity}_${s.total}`));
+
+      const toAdd: SaleItem[] = [];
+      let skipped = 0;
+
+      importedItems.forEach((item) => {
+        const sig = `${item.billId}_${item.sku}_${item.date}_${item.quantity}_${item.total}`;
+        if (existingIds.has(item.id) || existingSignatures.has(sig)) {
+          skipped++;
+        } else {
+          toAdd.push(item);
+        }
+      });
+
+      const merged = [...toAdd, ...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setSales(merged);
+      setStoredData(StorageKeys.SALES, merged);
+
+      addAuditLog(
+        'Import Excel',
+        `นำเข้าประวัติยอดขายจากแอปเดิมเพิ่ม ${toAdd.length} รายการ (ข้ามรายการซ้ำ ${skipped} รายการ)`,
+        'success'
+      );
+      showToast(
+        `นำเข้าประวัติยอดขายเพิ่มสำเร็จ ${toAdd.length} รายการ (ข้ามซ้ำ ${skipped} รายการ)`,
+        'success'
+      );
+      return { added: toAdd.length, replaced: 0, skipped };
+    }
+  };
+
   // Computed Stock
   const computedStock = useMemo(() => {
     return computeStockInventory(products, stockIns, sales);
@@ -695,17 +752,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return getStoredData<MonthTargetData[]>(StorageKeys.TARGETS, INITIAL_YEAR_TARGETS);
   });
 
-  const updateYearTarget = (month: number, year: number, target: number) => {
-    const exists = yearTargets.some((t) => t.month === month && t.year === year);
+  const updateYearTarget = (month: number, year: number, target: number, applyToAllMonths = false) => {
     let updated: MonthTargetData[];
-    if (exists) {
-      updated = yearTargets.map((t) => (t.month === month && t.year === year ? { ...t, target } : t));
+    if (applyToAllMonths) {
+      const otherYearTargets = yearTargets.filter((t) => t.year !== year);
+      const newYearMonths: MonthTargetData[] = Array.from({ length: 12 }, (_, i) => ({
+        month: i + 1,
+        year,
+        target,
+      }));
+      updated = [...otherYearTargets, ...newYearMonths];
     } else {
-      updated = [...yearTargets, { month, year, target }];
+      const exists = yearTargets.some((t) => t.month === month && t.year === year);
+      if (exists) {
+        updated = yearTargets.map((t) => (t.month === month && t.year === year ? { ...t, target } : t));
+      } else {
+        updated = [...yearTargets, { month, year, target }];
+      }
     }
     setYearTargets(updated);
     setStoredData(StorageKeys.TARGETS, updated);
-    showToast(`อัปเดตเป้าหมายยอดขายเดือน ${month}/${year} เป็น ฿${target.toLocaleString()}`, 'success');
+
+    // Sync with commissionConfig if this affects current month
+    const now = new Date();
+    if ((applyToAllMonths && year === now.getFullYear()) || (month === now.getMonth() + 1 && year === now.getFullYear())) {
+      const updatedConfig = { ...commissionConfig, monthlyTarget: target };
+      setCommissionConfig(updatedConfig);
+      setStoredData(StorageKeys.COMMISSION_RULES, updatedConfig);
+    }
+
+    addAuditLog(
+      'Settings Change',
+      applyToAllMonths
+        ? `อัปเดตเป้าหมายยอดขายทั้งปี ${year} ทุกเดือนเป็น ฿${target.toLocaleString()}`
+        : `อัปเดตเป้าหมายเดือน ${month}/${year} เป็น ฿${target.toLocaleString()}`,
+      'success'
+    );
+    showToast(
+      applyToAllMonths
+        ? `บันทึกเป้าหมาย ฿${target.toLocaleString()} ให้ครบทั้ง 12 เดือนเรียบร้อยแล้ว`
+        : `อัปเดตเป้าหมายเดือน ${month}/${year} เป็น ฿${target.toLocaleString()} เรียบร้อยแล้ว`,
+      'success'
+    );
   };
 
   // Brand Settings
@@ -1023,6 +1111,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sales,
         updateSale,
         deleteSale,
+        importSalesHistory,
         stockIns,
         addStockIn,
         bulkAddStockIn,

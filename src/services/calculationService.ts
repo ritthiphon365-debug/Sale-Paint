@@ -40,7 +40,7 @@ export function computeStockInventory(
       bases.forEach((base) => {
         const variantKey = `${prod.id}_${size}_${base || 'NONE'}`;
         const initialStockKey = `${size}_${base || 'A'}`;
-        const initialStock = prod.initialStock?.[initialStockKey] ?? prod.initialStock?.[size] ?? 10;
+        const initialStock = prod.initialStock?.[initialStockKey] ?? prod.initialStock?.[size] ?? 0;
         const stockIn = stockInMap[variantKey] || 0;
         const soldQuantity = totalSoldMap[variantKey] || 0;
         const remainingStock = initialStock + stockIn - soldQuantity;

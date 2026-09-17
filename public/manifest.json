@@ -2,7 +2,7 @@
   "name": "Sale Paint Manager",
   "short_name": "Sale Paint",
   "description": "ระบบบริหารงานขายแบบครบวงจร Mobile-first พร้อมสต็อก CRM คอมมิชชั่น MKS",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#e11d48",
