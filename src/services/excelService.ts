@@ -97,85 +97,160 @@ export async function parseProductCatalogExcel(file: File): Promise<{
 }
 
 // Helper to parse Excel dates (serial numbers, DD/MM/YYYY, YYYY-MM-DD, and Buddhist Era years)
-export function parseExcelDate(val: any): string {
-  if (!val) return new Date().toISOString().split('T')[0];
+export function parseExcelDate(val: any): string | null {
+  if (val === undefined || val === null || String(val).trim() === '') return null;
+
+  const toIso = (year: number, month: number, day: number): string | null => {
+    if (year > 2400) year -= 543;
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day
+    ) return null;
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
 
   if (val instanceof Date && !isNaN(val.getTime())) {
-    let y = val.getFullYear();
-    if (y > 2400) y -= 543;
-    const m = String(val.getMonth() + 1).padStart(2, '0');
-    const d = String(val.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return toIso(val.getFullYear(), val.getMonth() + 1, val.getDate());
   }
 
-  // Excel numeric date serial
-  if (typeof val === 'number') {
-    // 25569 days offset between 1900-01-01 and 1970-01-01
-    const dateObj = new Date(Math.round((val - 25569) * 86400 * 1000));
+  if (typeof val === 'number' && isFinite(val)) {
+    // Excel's 1900 date system. XLSX is configured with cellDates=true below,
+    // but keep this fallback for numeric serials in exported/converted files.
+    const epoch = new Date(Date.UTC(1899, 11, 30));
+    const dateObj = new Date(epoch.getTime() + Math.round(val * 86400000));
     if (!isNaN(dateObj.getTime())) {
-      let y = dateObj.getFullYear();
-      if (y > 2400) y -= 543;
-      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const d = String(dateObj.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
+      return toIso(dateObj.getUTCFullYear(), dateObj.getUTCMonth() + 1, dateObj.getUTCDate());
     }
   }
 
   const str = String(val).trim();
 
-  // Excel serial stored as string digits
-  if (/^\d{5}$/.test(str)) {
+  // Excel serial stored as a string.
+  if (/^\d{5}(?:\.\d+)?$/.test(str)) {
     const num = Number(str);
-    const dateObj = new Date(Math.round((num - 25569) * 86400 * 1000));
-    if (!isNaN(dateObj.getTime())) {
-      let y = dateObj.getFullYear();
-      if (y > 2400) y -= 543;
-      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const d = String(dateObj.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
+    if (num >= 1 && num <= 60000) {
+      const epoch = new Date(Date.UTC(1899, 11, 30));
+      const dateObj = new Date(epoch.getTime() + Math.round(num * 86400000));
+      return toIso(dateObj.getUTCFullYear(), dateObj.getUTCMonth() + 1, dateObj.getUTCDate());
     }
   }
 
-  // Match DD/MM/YYYY or DD-MM-YYYY
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY (also accepts a time suffix).
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
   if (dmyMatch) {
-    const d = parseInt(dmyMatch[1], 10);
-    const m = parseInt(dmyMatch[2], 10);
-    let y = parseInt(dmyMatch[3], 10);
-    if (y > 2400) y -= 543; // Convert Buddhist Era (e.g. 2567 -> 2024)
-    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    return toIso(Number(dmyMatch[3]), Number(dmyMatch[2]), Number(dmyMatch[1]));
   }
 
-  // Match YYYY/MM/DD or YYYY-MM-DD
-  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  // YYYY/MM/DD, YYYY-MM-DD, YYYY.MM.DD.
+  const ymdMatch = str.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
   if (ymdMatch) {
-    let y = parseInt(ymdMatch[1], 10);
-    const m = parseInt(ymdMatch[2], 10);
-    const d = parseInt(ymdMatch[3], 10);
-    if (y > 2400) y -= 543;
-    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    return toIso(Number(ymdMatch[1]), Number(ymdMatch[2]), Number(ymdMatch[3]));
   }
 
-  // Fallback native parse
+  // Thai date text such as 15 ส.ค. 2569 / 15 สิงหาคม 2569.
+  const thaiMonths: Record<string, number> = {
+    'ม.ค.': 1, 'มกราคม': 1, 'ก.พ.': 2, 'กุมภาพันธ์': 2,
+    'มี.ค.': 3, 'มีนาคม': 3, 'เม.ย.': 4, 'เมษายน': 4,
+    'พ.ค.': 5, 'พฤษภาคม': 5, 'มิ.ย.': 6, 'มิถุนายน': 6,
+    'ก.ค.': 7, 'กรกฎาคม': 7, 'ส.ค.': 8, 'สิงหาคม': 8,
+    'ก.ย.': 9, 'กันยายน': 9, 'ต.ค.': 10, 'ตุลาคม': 10,
+    'พ.ย.': 11, 'พฤศจิกายน': 11, 'ธ.ค.': 12, 'ธันวาคม': 12,
+  };
+  const thaiMatch = str.match(/^(\d{1,2})\s+([^\s]+)\s+(\d{4})/);
+  if (thaiMatch) {
+    const month = thaiMonths[thaiMatch[2]];
+    if (month) return toIso(Number(thaiMatch[3]), month, Number(thaiMatch[1]));
+  }
+
   const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
-    let y = parsed.getFullYear();
-    if (y > 2400) y -= 543;
-    const m = String(parsed.getMonth() + 1).padStart(2, '0');
-    const d = String(parsed.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return toIso(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
   }
-
-  return new Date().toISOString().split('T')[0];
+  return null;
 }
 
-// Clean number strings with commas, currency symbols, and whitespace
 function cleanNumeric(val: any, fallback = 0): number {
   if (val === undefined || val === null || val === '') return fallback;
-  if (typeof val === 'number') return isNaN(val) ? fallback : val;
-  const cleaned = String(val).replace(/[^0-9.-]/g, '');
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? fallback : num;
+  if (typeof val === 'number') return isFinite(val) ? val : fallback;
+  const text = String(val).trim().replace(/,/g, '');
+  const cleaned = text.replace(/[^0-9.-]/g, '');
+  const num = Number(cleaned);
+  return isFinite(num) ? num : fallback;
+}
+
+const HEADER_ALIASES = {
+  date: ['วันที่ (Date)', 'วันที่ขาย', 'วันที่ทำรายการ', 'วัน-เวลา', 'Date/Time', 'Sale Date', 'Created Date', 'วันที่', 'Date'],
+  billId: ['รหัสบิล (Bill ID)', 'เลขที่ใบเสร็จ', 'เลขที่บิล', 'เลขบิล', 'Bill No', 'Bill ID', 'BillID', 'Invoice', 'Order ID', 'Receipt No', 'รหัสบิล', 'บิล'],
+  productName: ['ชื่อสินค้า (Product)', 'ชื่อสินค้า', 'Product Name', 'Item Name', 'รายการสินค้า', 'Product', 'ชื่อสี', 'รายการ', 'ชื่อ'],
+  sku: ['รหัส SKU', 'SKU', 'รหัสสินค้า', 'Item Code', 'Barcode', 'Code', 'บาร์โค้ด'],
+  size: ['ขนาด (Size)', 'ขนาดบรรจุ', 'Size (GL)', 'Size', 'ขนาด', 'บรรจุ'],
+  base: ['เบส (Base)', 'เบสสี', 'Base', 'BASE', 'เบส'],
+  filmColor: ['ฟิล์มสี (Film Color)', 'ฟิล์มสี', 'Film Color', 'Film', 'ชนิดฟิล์ม', 'Sheen', 'Finish', 'ฟิล์ม'],
+  colorCode: ['รหัสเฉดสี (Color Code)', 'รหัสเฉดสี', 'Color Code', 'เบอร์สี', 'เฉดสี', 'รหัสสี', 'Shade', 'Color'],
+  price: ['ราคา/หน่วย (Price)', 'ราคาต่อหน่วย', 'Unit Price', 'ราคาขาย', 'ราคา/หน่วย', 'Price'],
+  tintPrice: ['ค่าผสมสี (Tint Price)', 'ค่าผสมสี', 'Tint Price', 'ค่าแม่สี', 'ค่าสี', 'Tint'],
+  quantity: ['จำนวน (Qty)', 'จำนวนถัง', 'จำนวนชิ้น', 'Quantity', 'Qty', 'จำนวน', 'ชิ้น', 'ถัง'],
+  total: ['ยอดรวม (Total THB)', 'ยอดรวมสุทธิ', 'รวมทั้งสิ้น', 'Total Amount', 'Total THB', 'ยอดรวม', 'รวมเงิน', 'เป็นเงิน', 'จำนวนเงิน', 'Total'],
+  customerName: ['ชื่อลูกค้า/ช่าง', 'ชื่อลูกค้า', 'Customer Name', 'Customer', 'ชื่อช่าง', 'ช่าง/ผู้รับเหมา', 'ผู้ซื้อ', 'ลูกค้า'],
+  customerPhone: ['เบอร์โทรศัพท์', 'เบอร์โทร', 'Telephone', 'Phone', 'Tel', 'Mobile', 'เบอร์ติดต่อ'],
+  salesperson: ['พนักงานขาย', 'Salesperson', 'Seller', 'ผู้ขาย', 'PC'],
+  brand: ['ยี่ห้อ', 'แบรนด์', 'Brand'],
+};
+
+type SalesColumnKey = keyof typeof HEADER_ALIASES;
+type SalesColumnMap = Partial<Record<SalesColumnKey, string>>;
+
+const normalizeHeader = (value: any): string => String(value ?? '')
+  .trim()
+  .toLowerCase()
+  .replace(/[()\[\]{}:：/\\|_\-.,]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+function buildSalesColumnMap(row: Record<string, any>): SalesColumnMap {
+  const headers = Object.keys(row);
+  const normalized = headers.map((header) => ({ header, key: normalizeHeader(header) }));
+  const map: SalesColumnMap = {};
+
+  const forbiddenByField: Partial<Record<SalesColumnKey, string[]>> = {
+    price: ['ต้นทุน', 'cost', 'ทุน'],
+    total: ['ต้นทุน', 'cost'],
+    quantity: ['คงเหลือ', 'stock', 'สต็อก'],
+  };
+
+  (Object.keys(HEADER_ALIASES) as SalesColumnKey[]).forEach((field) => {
+    const aliases = HEADER_ALIASES[field].map(normalizeHeader).filter(Boolean);
+    const forbidden = forbiddenByField[field] || [];
+
+    const candidates = normalized
+      .map(({ header, key }) => {
+        if (forbidden.some((word) => key.includes(normalizeHeader(word)))) return null;
+        let score = 0;
+        if (aliases.includes(key)) score = 1000 - key.length;
+        else {
+          for (const alias of aliases) {
+            if (key === alias) score = Math.max(score, 900);
+            else if (key.startsWith(alias + ' ')) score = Math.max(score, 700 - Math.max(0, key.length - alias.length));
+            else if (key.includes(' ' + alias + ' ')) score = Math.max(score, 650 - Math.max(0, key.length - alias.length));
+            else if (key.includes(alias) && alias.length >= 4) score = Math.max(score, 500 - Math.max(0, key.length - alias.length));
+          }
+        }
+        return score > 0 ? { header, score } : null;
+      })
+      .filter(Boolean) as { header: string; score: number }[];
+
+    candidates.sort((a, b) => b.score - a.score || a.header.length - b.header.length);
+    if (candidates[0]) map[field] = candidates[0].header;
+  });
+
+  return map;
+}
+
+function getMappedValue(row: Record<string, any>, map: SalesColumnMap, field: SalesColumnKey): any {
+  const header = map[field];
+  return header ? row[header] : undefined;
 }
 
 export interface ParseSalesResult {
@@ -188,204 +263,105 @@ export interface ParseSalesResult {
   latestDate: string | null;
 }
 
-// Parse Historical Sales Excel with multi-dialect Thai & English column matching
+// Parse Historical Sales Excel with robust Thai/English header mapping.
 export async function parseSalesHistoryExcel(file: File): Promise<ParseSalesResult> {
   const rawRows = await parseExcelFile(file);
   const items: SaleItem[] = [];
   const errors: string[] = [];
+  const firstRow = rawRows.find((row: any) => Object.keys(row).length > 0) || {};
+  const columnMap = buildSalesColumnMap(firstRow);
+  const requiredFields: SalesColumnKey[] = ['date', 'productName'];
 
-  let lastGeneratedBillDate = '';
-  let lastGeneratedBillSeq = 1;
+  for (const field of requiredFields) {
+    if (!columnMap[field]) errors.push(`ไม่พบคอลัมน์สำคัญ: ${field === 'date' ? 'วันที่' : 'ชื่อสินค้า'}`);
+  }
+
+  let previousBillId: string | undefined;
+  let previousBillWasExplicit = false;
+  let previousDate: string | null = null;
+  let generatedSeq = 0;
 
   rawRows.forEach((row: any, index: number) => {
-    const rowNum = index + 2; // 1-indexed plus header
-
-    const findKey = (possibleNames: string[]): any => {
-      for (const name of possibleNames) {
-        if (row[name] !== undefined && row[name] !== null && String(row[name]).trim() !== '') {
-          return row[name];
-        }
-        for (const k of Object.keys(row)) {
-          const cleanK = k.trim().toLowerCase();
-          const cleanName = name.trim().toLowerCase();
-          if (cleanK === cleanName || cleanK.includes(cleanName)) {
-            if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
-              return row[k];
-            }
-          }
-        }
-      }
-      return undefined;
-    };
-
-    // Date
-    const dateVal = findKey([
-      'วันที่ (Date)',
-      'วันที่',
-      'Date',
-      'Sale Date',
-      'วันที่ขาย',
-      'วันที่ทำรายการ',
-      'วัน-เวลา',
-      'Created Date',
-      'Time',
-      'Date/Time',
-    ]);
+    const rowNum = index + 2;
+    const dateVal = getMappedValue(row, columnMap, 'date');
     const parsedDate = parseExcelDate(dateVal);
-
-    // Bill ID
-    let billId = findKey([
-      'รหัสบิล (Bill ID)',
-      'รหัสบิล',
-      'Bill ID',
-      'Bill No',
-      'BillID',
-      'Invoice',
-      'เลขที่บิล',
-      'เลขบิล',
-      'บิล',
-      'Order ID',
-      'Receipt No',
-      'เลขที่ใบเสร็จ',
-    ]);
-
-    if (!billId) {
-      if (parsedDate !== lastGeneratedBillDate) {
-        lastGeneratedBillDate = parsedDate;
-        lastGeneratedBillSeq = 1;
-      } else {
-        lastGeneratedBillSeq++;
-      }
-      billId = `BILL-IMP-${parsedDate.replace(/-/g, '')}-${String(lastGeneratedBillSeq).padStart(3, '0')}`;
-    } else {
-      billId = String(billId).trim();
+    if (!parsedDate) {
+      errors.push(`แถวที่ ${rowNum}: วันที่ไม่ถูกต้องหรือว่าง`);
+      return;
     }
 
-    // Product Name
-    const nameVal = findKey([
-      'ชื่อสินค้า (Product)',
-      'ชื่อสินค้า',
-      'Product Name',
-      'Product',
-      'ชื่อ',
-      'รายการ',
-      'Item Name',
-      'รายการสินค้า',
-      'ชื่อสี',
-    ]);
-    const productName = nameVal ? String(nameVal).trim() : 'สินค้าจากแอปเดิม';
+    const explicitBill = getMappedValue(row, columnMap, 'billId');
+    let billId = explicitBill !== undefined && String(explicitBill).trim() !== '' ? String(explicitBill).trim() : '';
 
-    // SKU
-    const skuVal = findKey([
-      'รหัส SKU',
-      'SKU',
-      'sku',
-      'รหัสสินค้า',
-      'Barcode',
-      'Item Code',
-      'Code',
-      'บาร์โค้ด',
-    ]);
-    const sku = skuVal ? String(skuVal).trim().toUpperCase() : `SKU-IMP-${index + 1}`;
+    // Excel exports often merge the Bill ID cell vertically. XLSX returns blanks
+    // for those continuation rows, so carry the previous bill only when the date matches.
+    if (!billId && previousBillWasExplicit && previousBillId && previousDate === parsedDate) {
+      billId = previousBillId;
+    }
+    const billWasExplicit = Boolean(billId);
+    if (!billId) {
+      generatedSeq++;
+      billId = `BILL-IMP-${parsedDate.replace(/-/g, '')}-${String(generatedSeq).padStart(5, '0')}`;
+    }
+    previousBillId = billId;
+    previousBillWasExplicit = billWasExplicit;
+    previousDate = parsedDate;
 
-    // Size
-    const sizeVal = findKey(['ขนาด (Size)', 'ขนาด', 'Size', 'บรรจุ', 'ขนาดบรรจุ', 'Size (GL)']);
-    let size = sizeVal ? String(sizeVal).trim() : '5GL';
-    // Normalize size text
-    if (size.includes('5') && !size.includes('2.5') && !size.includes('.5')) size = '5GL';
-    else if (size.includes('2.5')) size = '2.5GL';
-    else if (size.includes('1/4') || size.includes('0.25')) size = '1/4GL';
-    else if (size.includes('1')) size = '1GL';
+    const text = (field: SalesColumnKey, fallback = '') => {
+      const value = getMappedValue(row, columnMap, field);
+      return value === undefined || value === null ? fallback : String(value).trim() || fallback;
+    };
 
-    // Base
-    const baseVal = findKey(['เบส (Base)', 'เบส', 'Base', 'BASE', 'เบสสี']);
-    const base = baseVal ? String(baseVal).trim().toUpperCase() : '-';
+    const productName = text('productName', 'สินค้าจากแอปเดิม');
+    const sku = text('sku', `SKU-IMP-${index + 1}`).toUpperCase();
+    const rawSize = text('size', '5GL');
+    let size = rawSize;
+    if (/2[.,]?5/.test(rawSize)) size = '2.5GL';
+    else if (/1\s*\/\s*4|0[.,]?25/.test(rawSize)) size = '1/4GL';
+    else if (/\b5(?:\s*GL|\s*แกลลอน)?\b/i.test(rawSize)) size = '5GL';
+    else if (/\b1(?:\s*GL|\s*แกลลอน)?\b/i.test(rawSize)) size = '1GL';
 
-    // Film Color
-    const filmVal = findKey([
-      'ฟิล์มสี (Film Color)',
-      'ฟิล์มสี',
-      'ชนิดฟิล์ม',
-      'Film Color',
-      'Film',
-      'Sheen',
-      'Finish',
-      'ฟิล์ม',
-    ]);
-    const filmColor = filmVal ? String(filmVal).trim() : '-';
-
-    // Color Code
-    const colorVal = findKey([
-      'รหัสเฉดสี (Color Code)',
-      'เบอร์สี',
-      'รหัสเฉดสี',
-      'Color Code',
-      'Color',
-      'เฉดสี',
-      'รหัสสี',
-      'Shade',
-    ]);
-    const colorCode = colorVal ? String(colorVal).trim() : '-';
-
-    // Numbers: Price, Tint, Qty, Total
-    const priceVal = findKey(['ราคา/หน่วย (Price)', 'ราคา', 'ราคาขาย', 'Price', 'Unit Price', 'ราคาต่อหน่วย', 'ราคา/หน่วย']);
-    const tintVal = findKey(['ค่าผสมสี (Tint Price)', 'ค่าผสมสี', 'Tint Price', 'ค่าสี', 'ค่าแม่สี', 'Tint']);
-    const qtyVal = findKey(['จำนวน (Qty)', 'จำนวน', 'Qty', 'Quantity', 'จำนวนถัง', 'จำนวนชิ้น', 'ชิ้น', 'ถัง']);
-    const totalVal = findKey(['ยอดรวม (Total THB)', 'ยอดรวม', 'Total THB', 'Total', 'Total Amount', 'รวมเงิน', 'รวมทั้งสิ้น', 'เป็นเงิน', 'จำนวนเงิน']);
-
+    const baseRaw = text('base', '-');
+    const filmRaw = text('filmColor', '-');
+    const colorRaw = text('colorCode', '-');
+    const priceVal = getMappedValue(row, columnMap, 'price');
+    const tintVal = getMappedValue(row, columnMap, 'tintPrice');
+    const qtyVal = getMappedValue(row, columnMap, 'quantity');
+    const totalVal = getMappedValue(row, columnMap, 'total');
     let price = cleanNumeric(priceVal, 0);
     const tintPrice = cleanNumeric(tintVal, 0);
     let quantity = cleanNumeric(qtyVal, 1);
     if (quantity <= 0) quantity = 1;
-
     let total = cleanNumeric(totalVal, 0);
 
-    // If total is missing or zero, compute from (price + tintPrice) * quantity
-    if (total <= 0 && price > 0) {
-      total = (price + tintPrice) * quantity;
-    } else if (price <= 0 && total > 0 && quantity > 0) {
-      // If price was missing but total was present
-      price = Math.max(0, Math.round(total / quantity) - tintPrice);
-    }
+    if (total <= 0 && price > 0) total = (price + tintPrice) * quantity;
+    else if (price <= 0 && total > 0) price = Math.max(0, total / quantity - tintPrice);
 
     if (total <= 0) {
-      errors.push(`แถวที่ ${rowNum}: ไม่พบยอดรวมเงิน (Total) หรือราคาเป็น 0 สำหรับสินค้า "${productName}"`);
+      errors.push(`แถวที่ ${rowNum}: ไม่พบยอดรวม/ราคา สำหรับสินค้า "${productName}"`);
+      return;
     }
 
-    // Customer Name & Phone
-    const custVal = findKey([
-      'ชื่อลูกค้า/ช่าง',
-      'ชื่อลูกค้า',
-      'Customer',
-      'Customer Name',
-      'ลูกค้า',
-      'ชื่อช่าง',
-      'ช่าง/ผู้รับเหมา',
-      'ผู้ซื้อ',
-    ]);
-    const customerName = custVal ? String(custVal).trim() : undefined;
-
-    const phoneVal = findKey(['เบอร์โทรศัพท์', 'เบอร์โทร', 'Phone', 'Tel', 'Telephone', 'เบอร์ติดต่อ', 'Mobile']);
-    const customerPhone = phoneVal ? String(phoneVal).trim() : undefined;
-
-    // Salesperson
-    const salesPersonVal = findKey(['พนักงานขาย', 'Salesperson', 'Seller', 'PC', 'ผู้ขาย']);
-    const salesperson = salesPersonVal ? String(salesPersonVal).trim() : undefined;
-
-    const saleId = `sale-imp-${Date.now().toString(36)}-${index}-${Math.random().toString(36).substring(2, 6)}`;
+    const customerName = text('customerName', '') || undefined;
+    const customerPhone = text('customerPhone', '') || undefined;
+    const salesperson = text('salesperson', '') || undefined;
+    const brand = text('brand', 'NIPPON PAINT');
+    const safeSku = sku.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const saleId = `sale-imp-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+    const timestamp = `${parsedDate}T12:00:00.000Z`;
 
     items.push({
       id: saleId,
       billId,
       date: parsedDate,
-      productId: `prod-imp-${sku.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`,
+      productId: `prod-imp-${safeSku}`,
       productName,
-      brand: 'NIPPON PAINT',
+      brand,
       sku,
       size,
-      base: base !== '-' ? base : undefined,
-      filmColor: filmColor !== '-' ? filmColor : undefined,
-      colorCode: colorCode !== '-' ? colorCode : undefined,
+      base: baseRaw !== '-' ? baseRaw.toUpperCase() : undefined,
+      filmColor: filmRaw !== '-' ? filmRaw : undefined,
+      colorCode: colorRaw !== '-' ? colorRaw : undefined,
       price,
       tintPrice,
       quantity,
@@ -393,21 +369,14 @@ export async function parseSalesHistoryExcel(file: File): Promise<ParseSalesResu
       customerName,
       customerPhone,
       salesperson,
-      createdAt: `${parsedDate}T12:00:00.000Z`,
-      updatedAt: `${parsedDate}T12:00:00.000Z`,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
   });
 
-  // Calculate stats
   const totalRevenue = items.reduce((sum, item) => sum + item.total, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-
-  const sortedDates = items
-    .map((i) => i.date)
-    .filter(Boolean)
-    .sort();
-  const earliestDate = sortedDates.length > 0 ? sortedDates[0] : null;
-  const latestDate = sortedDates.length > 0 ? sortedDates[sortedDates.length - 1] : null;
+  const sortedDates = items.map((i) => i.date).sort();
 
   return {
     items,
@@ -415,8 +384,8 @@ export async function parseSalesHistoryExcel(file: File): Promise<ParseSalesResu
     rawCount: rawRows.length,
     totalRevenue,
     totalQuantity,
-    earliestDate,
-    latestDate,
+    earliestDate: sortedDates[0] || null,
+    latestDate: sortedDates[sortedDates.length - 1] || null,
   };
 }
 
@@ -535,18 +504,11 @@ export function parseExcelFile(file: File): Promise<any[]> {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-          resolve([]);
-          return;
-        }
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        if (!worksheet) {
-          resolve([]);
-          return;
-        }
-        const json = XLSX.utils.sheet_to_json(worksheet);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        if (!workbook.SheetNames?.length) return resolve([]);
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!worksheet) return resolve([]);
+        const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
         resolve(json || []);
       } catch (err) {
         reject(err);
