@@ -1,0 +1,6 @@
+{
+  "name": "Sales Management",
+  "description": "ระบบบริหารงานขายแบบครบวงจร Mobile-first พร้อมระบบสต็อก ลูกค้า CRM คอมมิชชั่น MKS และรายงาน",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

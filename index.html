@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Sales Management — บริหารงานขายครบวงจร</title>
+    <meta name="description" content="ระบบบริหารงานขายแบบครบวงจร Mobile-first พร้อมระบบสต็อก ลูกค้า CRM คอมมิชชั่น MKS และรายงาน" />
+    <meta property="og:title" content="Sales Management — บริหารงานขายครบวงจร" />
+    <meta property="og:description" content="ระบบบริหารงานขายแบบครบวงจร Mobile-first พร้อมระบบสต็อก ลูกค้า CRM คอมมิชชั่น MKS และรายงาน" />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#e11d48" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Google Identity Services for OAuth -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body class="bg-slate-50 text-slate-800 antialiased selection:bg-rose-500 selection:text-white min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator && location.protocol === 'https:') {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(console.error);
+        });
+      }
+    </script>
+  </body>
+</html>
+
