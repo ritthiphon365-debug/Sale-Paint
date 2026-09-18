@@ -3,6 +3,7 @@ import {
   Search,
   Filter,
   Download,
+  Upload,
   Trash2,
   Edit2,
   Calendar,
@@ -64,10 +65,18 @@ export const HistoryView: React.FC = () => {
             History & Export • ตรวจสอบรายการขายย้อนหลัง แก้ไขข้อมูล และส่งออก Excel
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setModalOpen('import-sales')}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-semibold px-3.5 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
+            title="นำเข้าประวัติยอดขายจากแอปเดิมด้วยไฟล์ Excel"
+          >
+            <Upload className="w-4 h-4" />
+            <span>นำเข้าประวัติ Excel</span>
+          </button>
           <button
             onClick={handleExportExcel}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>ส่งออก Excel</span>

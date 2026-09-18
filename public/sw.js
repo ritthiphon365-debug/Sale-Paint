@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sale-paint-cache-v2';
+const CACHE_NAME = 'sale-paint-cache-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

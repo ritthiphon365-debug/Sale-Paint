@@ -67,27 +67,35 @@ export const ImportExportModal: React.FC = () => {
             </div>
           </div>
 
-          <div className="pt-3 border-t border-slate-100">
-            <h3 className="font-bold text-slate-800 text-sm mb-1">นำเข้าข้อมูล (Import)</h3>
-            <p className="text-slate-500 mb-2">
-              นำเข้าไฟล์ Excel สต็อกเริ่มต้นหรือรายการสินค้า (.xlsx)
-            </p>
-            <label className="border-2 border-dashed border-slate-200 hover:border-slate-400 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer bg-slate-50 text-center">
-              <Upload className="w-6 h-6 text-slate-400 mb-1" />
-              <span className="font-semibold text-slate-700 text-xs">แตะเพื่อเลือกไฟล์ Excel</span>
-              <span className="text-[10px] text-slate-400">รองรับ .xlsx, .csv</span>
-              <input
-                type="file"
-                accept=".xlsx, .xls, .csv"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    showToast(`เลือกไฟล์ ${e.target.files[0].name} แล้ว กำลังประมวลผล`, 'success');
-                    setModalOpen(null);
-                  }
-                }}
-              />
-            </label>
+          <div className="pt-3 border-t border-slate-100 space-y-3">
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm mb-1">นำเข้าข้อมูล (Import)</h3>
+              <p className="text-slate-500 mb-3">
+                นำเข้าข้อมูลจากไฟล์ Excel ไม่ว่าจะเป็นประวัติยอดขายจากแอปเดิม หรือข้อมูลสต็อกสินค้า
+              </p>
+            </div>
+
+            {/* Sales History Import Card */}
+            <button
+              type="button"
+              onClick={() => setModalOpen('import-sales')}
+              className="w-full p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 hover:border-blue-400 hover:bg-blue-50 text-left flex items-start gap-3 transition-all cursor-pointer group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                <Upload className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-slate-900 text-xs flex items-center justify-between">
+                  <span>นำเข้าประวัติยอดขายจากแอปเดิม (Sales History)</span>
+                  <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+                    แนะนำ
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                  นำเข้าไฟล์ Excel (.xlsx) เพื่อดึงยอดขายย้อนหลังเข้ากราฟ สรุปคอมมิชชั่น และประวัติลูกค้าอัตโนมัติ
+                </div>
+              </div>
+            </button>
           </div>
         </div>
 
