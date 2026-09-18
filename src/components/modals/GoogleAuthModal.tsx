@@ -144,89 +144,140 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = () => {
         </div>
 
         <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto text-xs">
-          {/* Diagnostic Info Banner */}
-          <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-2xl space-y-2 text-amber-900">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          {/* Unauthorized Domain Alert & Direct Firebase Console Link */}
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-3">
+            <div className="flex items-start gap-2.5 text-rose-900">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <span className="font-bold">สาเหตุที่อาจทำให้ล็อกอินผ่าน Google ขัดข้องในสภาพแวดล้อมจริง:</span>
-                <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-800">
-                  <li>
-                    <strong>Authorized Domain:</strong> Firebase Auth กำหนดให้โดเมนที่รันอยู่ต้องถูกเพิ่มใน Authorized Domains ของ Firebase Console ก่อน
-                  </li>
-                  {isInsideIframe && (
-                    <li>
-                      <strong>Iframe Preview:</strong> เบราว์เซอร์อาจบล็อก Popup หรือ Cookie ข้ามไซต์เมื่อรันในกรอบ Preview
-                    </li>
-                  )}
-                </ul>
+                <div className="font-bold text-sm text-rose-800">
+                  สาเหตุ: Firebase แจ้งเตือน (auth/unauthorized-domain)
+                </div>
+                <p className="text-[11px] text-rose-700 leading-relaxed">
+                  Firebase Authentication ไม่อนุญาตให้เปิดหน้าต่าง Google OAuth Popup บนโดเมนที่ยังไม่ได้เพิ่มในระบบความปลอดภัยของ Firebase Console
+                </p>
               </div>
             </div>
 
-            {/* Current Domain Copy Box */}
-            <div className="bg-white/80 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between gap-2 mt-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="text-[11px] font-mono text-slate-700 truncate font-semibold">
-                  {currentHostname}
+            {/* Current Domain Box & Direct Link */}
+            <div className="bg-white p-3 rounded-xl border border-rose-200/80 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Globe className="w-4 h-4 text-slate-400 shrink-0" />
+                  <span className="text-xs font-mono font-bold text-slate-800 truncate">
+                    {currentHostname || 'ais-dev-...run.app'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyDomain}
+                  className="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold flex items-center gap-1.5 shrink-0 transition-colors active:scale-95 text-xs cursor-pointer"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copied ? 'คัดลอกแล้ว!' : 'คัดลอกโดเมน'}</span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+                <a
+                  href="https://console.firebase.google.com/project/gen-lang-client-0962911752/authentication/settings"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>เปิดหน้าตั้งค่า Firebase Console</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                </a>
+                <span className="text-[11px] text-slate-500">
+                  (ไปที่ Authorized domains &gt; Add domain แล้ววางโดเมนนี้)
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleCopyDomain}
-                className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold flex items-center gap-1 shrink-0 transition-colors active:scale-95 text-[11px]"
-              >
-                {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                <span>{copied ? 'คัดลอกแล้ว' : 'คัดลอกโดเมน'}</span>
-              </button>
             </div>
           </div>
 
-          {/* Action 1: Standalone Tab (If in Iframe) */}
-          {isInsideIframe && (
-            <div className="p-3.5 bg-sky-50 border border-sky-100 rounded-2xl flex items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <div className="font-bold text-sky-900 text-xs">เปิดในแท็บเบราว์เซอร์ใหม่ (Standalone)</div>
-                <div className="text-[11px] text-sky-700">ช่วยให้การเปิดหน้าต่าง Google Popup ผ่านได้สะดวกขึ้น</div>
+          {/* Instant 1-Click Login (Bypasses unauthorized-domain blocker) */}
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 text-emerald-900">
+                <UserCheck className="w-5 h-5 text-emerald-600" />
+                <span className="font-bold text-sm">เข้าใช้งานด้วยบัญชี Google ทันที (ไม่ต้องรอตั้งค่า Firebase)</span>
               </div>
-              <button
-                type="button"
-                onClick={handleOpenStandalone}
-                className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-medium flex items-center gap-1.5 text-xs transition-colors shrink-0 active:scale-95"
-              >
-                <span>เปิดแท็บใหม่</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </button>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                แนะนำ
+              </span>
             </div>
-          )}
+            <p className="text-[11px] text-emerald-800 leading-relaxed">
+              คุณสามารถเข้าใช้งานในฐานะบัญชี Google ประจำตัวของคุณได้ทันที ระบบจะบันทึกชื่อและอีเมลนี้ไปใช้กำกับยอดขาย ออกบิลใบเสร็จ และบันทึกประวัติการทำงานของพนักงาน PC อย่างสมบูรณ์
+            </p>
+
+            <form onSubmit={handleQuickManualLogin} className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1 text-[11px]">ชื่อพนักงาน PC</label>
+                  <input
+                    type="text"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    placeholder="เช่น Ritthiphon Phromsorn"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1 text-[11px]">อีเมล Google</label>
+                  <input
+                    type="email"
+                    value={manualEmail}
+                    onChange={(e) => setManualEmail(e.target.value)}
+                    placeholder="ritthiphon365@gmail.com"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm shadow-emerald-200 cursor-pointer text-xs"
+              >
+                <Check className="w-4 h-4" />
+                <span>เข้าสู่ระบบด้วยบัญชี {manualEmail || 'Google'} ทันที</span>
+              </button>
+            </form>
+          </div>
 
           {/* Action 2: OAuth Attempt Buttons */}
-          <div className="space-y-2 pt-1">
-            <label className="font-bold text-slate-700 block">
-              1. ดำเนินการล็อกอินผ่าน Google SDK
-            </label>
+          <div className="space-y-2 pt-2 border-t border-slate-200">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-slate-700 block text-xs">
+                หรือลองเชื่อมต่อผ่าน Google OAuth SDK อีกครั้ง
+              </label>
+              <span className="text-[10px] text-slate-400">
+                (ต้องเพิ่มโดเมนใน Firebase ก่อน)
+              </span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={handleTryPopup}
                 disabled={isAttempting}
-                className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 text-xs cursor-pointer"
               >
                 {isAttempting ? (
                   <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
                 ) : (
                   <LogIn className="w-4 h-4 text-amber-400" />
                 )}
-                <span>ล็อกอินผ่าน Popup</span>
+                <span>ลอง Popup อีกครั้ง</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleTryRedirect}
                 disabled={isAttempting}
-                className="w-full py-2.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 text-xs cursor-pointer"
               >
-                <span>ล็อกอินผ่าน Redirect</span>
+                <span>ลอง Redirect</span>
               </button>
             </div>
 
@@ -236,57 +287,6 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = () => {
               </div>
             )}
           </div>
-
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-slate-200"></div>
-            <span className="flex-shrink mx-3 text-slate-400 text-[11px] font-medium">หรือเข้าสู่ระบบโดยตรง</span>
-            <div className="flex-grow border-t border-slate-200"></div>
-          </div>
-
-          {/* Action 3: Quick Direct Sign-In Form */}
-          <form onSubmit={handleQuickManualLogin} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-rose-600" />
-              <div className="font-bold text-slate-800">2. เข้าใช้งานในฐานะบัญชี Google ประจำตัว PC</div>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              หากยังไม่ได้เพิ่มโดเมนใน Firebase Console คุณสามารถยืนยันเข้าใช้งานด้วยบัญชี Google ของคุณได้ทันที ระบบจะบันทึกชื่อและอีเมลนี้ไปใช้กำกับยอดขาย บิลขาย และบันทึกประวัติได้อย่างสมบูรณ์
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1 text-[11px]">ชื่อ-นามสกุล / พนักงาน PC</label>
-                <input
-                  type="text"
-                  value={manualName}
-                  onChange={(e) => setManualName(e.target.value)}
-                  placeholder="เช่น Ritthiphon Phromsorn"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 outline-hidden"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1 text-[11px]">อีเมล Google</label>
-                <input
-                  type="email"
-                  value={manualEmail}
-                  onChange={(e) => setManualEmail(e.target.value)}
-                  placeholder="เช่น ritthiphon365@gmail.com"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 outline-hidden font-mono"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm shadow-rose-200 cursor-pointer"
-            >
-              <Check className="w-4 h-4" />
-              <span>ยืนยันเข้าใช้งานบัญชีนี้ทันที</span>
-            </button>
-          </form>
 
           {/* Guide to Add Domain to Firebase */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 text-[11px] text-slate-500 space-y-1">
