@@ -149,11 +149,20 @@ interface AppContextType {
   connectGoogle: () => void;
   disconnectGoogle: () => void;
   spreadsheetId: string;
+  spreadsheetUrl: string;
   setSpreadsheetId: (id: string) => void;
-  syncWithGoogle: () => Promise<void>;
+  googleWebhookUrl: string;
+  setGoogleWebhookUrl: (url: string) => void;
+  autoSyncSheets: boolean;
+  setAutoSyncSheets: (val: boolean) => void;
+  unsyncedSaleCount: number;
+  syncedSaleIds: string[];
+  syncWithGoogle: (targetSales?: SaleItem[]) => Promise<void>;
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
   syncError: string | null;
   lastSyncTime: string | null;
+  exportSalesToCsv: () => void;
+  copySalesToClipboard: () => Promise<void>;
 
   // Quick action modals
   modalOpen: string | null;
@@ -677,7 +686,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const billTotal = newSaleItems.reduce((acc, i) => acc + i.total, 0);
     addAuditLog('Add Sale', `เปิดบิล ${billId} (${customerName || 'ลูกค้าทั่วไป'}) ยอดรวม ฿${billTotal.toLocaleString()}`, 'success');
-    showToast(`บันทึกการขายบิล ${billId} สำเร็จ ยอด ฿${billTotal.toLocaleString()}`, 'success');
+
+    // Auto-sync bill to Google Sheets if configured
+    if (autoSyncSheets && (googleWebhookUrl || spreadsheetId || GoogleSheetsService.getToken())) {
+      showToast(`บันทึกบิล ${billId} แล้ว • กำลังส่งยอดเข้า Google Sheet...`, 'info');
+      GoogleSheetsService.pushSalesToSheet(newSaleItems, {
+        spreadsheetId,
+        webhookUrl: googleWebhookUrl,
+        spreadsheetTitle: `${brandSettings.brandName} รายงานยอดขาย`,
+      })
+        .then((res) => {
+          const newIds = newSaleItems.map((s) => s.id);
+          setSyncedSaleIds((prev) => {
+            const next = Array.from(new Set([...prev, ...newIds]));
+            setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, next);
+            return next;
+          });
+          const nowStr = new Date().toLocaleTimeString('th-TH');
+          setLastSyncTime(nowStr);
+          setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, nowStr);
+          if (res.spreadsheetId && !spreadsheetId) {
+            setSpreadsheetIdState(res.spreadsheetId);
+            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, res.spreadsheetId);
+          }
+          showToast(`บันทึกการขายสำเร็จ และส่งยอดเข้า Google Sheet แล้ว (${newSaleItems.length} รายการ)`, 'success');
+          addAuditLog('Google Sync', `ส่งยอดบิล ${billId} (${newSaleItems.length} รายการ) เข้า Google Sheet เรียบร้อย`, 'success');
+        })
+        .catch((err) => {
+          console.warn('Auto sync to Google Sheet warning:', err);
+          showToast(`บันทึกบิลในระบบแล้ว แต่ส่ง Google Sheet ไม่สำเร็จ: ${err.message || 'ตรวจพบปัญหาการเชื่อมต่อ'}`, 'error');
+        });
+    } else {
+      showToast(`บันทึกการขายบิล ${billId} สำเร็จ ยอด ฿${billTotal.toLocaleString()}`, 'success');
+    }
 
     return billId;
   };
@@ -1097,16 +1138,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [spreadsheetId, setSpreadsheetIdState] = useState<string>(() => {
     return getStoredData<string>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, '');
   });
+  const [googleWebhookUrl, setGoogleWebhookUrlState] = useState<string>(() => {
+    return getStoredData<string>(StorageKeys.GOOGLE_WEBHOOK_URL, '');
+  });
+  const [autoSyncSheets, setAutoSyncSheetsState] = useState<boolean>(() => {
+    return getStoredData<boolean>(StorageKeys.GOOGLE_AUTO_SYNC, true);
+  });
+  const [syncedSaleIds, setSyncedSaleIds] = useState<string[]>(() => {
+    return getStoredData<string[]>(StorageKeys.GOOGLE_SYNCED_IDS, []);
+  });
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
     return getStoredData<string | null>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, null);
   });
 
+  const spreadsheetUrl = useMemo(() => {
+    return GoogleSheetsService.getSpreadsheetUrl(spreadsheetId);
+  }, [spreadsheetId]);
+
+  const unsyncedSaleCount = useMemo(() => {
+    const syncedSet = new Set(syncedSaleIds);
+    return sales.filter((s) => !syncedSet.has(s.id)).length;
+  }, [sales, syncedSaleIds]);
+
   const setSpreadsheetId = (id: string) => {
-    setSpreadsheetIdState(id);
-    setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, id);
+    const cleaned = GoogleSheetsService.extractSpreadsheetId(id);
+    setSpreadsheetIdState(cleaned);
+    setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, cleaned);
     showToast('บันทึก Spreadsheet ID เรียบร้อย', 'success');
+  };
+
+  const setGoogleWebhookUrl = (url: string) => {
+    const trimmed = url.trim();
+    setGoogleWebhookUrlState(trimmed);
+    setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, trimmed);
+    showToast('บันทึก Webhook URL ของ Google Sheet เรียบร้อย', 'success');
+  };
+
+  const setAutoSyncSheets = (val: boolean) => {
+    setAutoSyncSheetsState(val);
+    setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, val);
+    showToast(val ? 'เปิดระบบซิงค์ Google Sheets อัตโนมัติแล้ว' : 'ปิดระบบซิงค์อัตโนมัติแล้ว', 'info');
   };
 
   const connectGoogle = () => {
@@ -1123,21 +1196,79 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('ยกเลิกการเชื่อมต่อ Google Sheets แล้ว', 'info');
   };
 
-  const syncWithGoogle = async () => {
+  const syncWithGoogle = async (targetSales?: SaleItem[]) => {
+    const items = targetSales && targetSales.length > 0
+      ? targetSales
+      : (sales.length > 0 ? sales : []);
+
+    if (items.length === 0) {
+      showToast('ไม่มียอดขายที่จะส่งไปยัง Google Sheets', 'info');
+      return;
+    }
+
+    if (!googleWebhookUrl && !spreadsheetId && !GoogleSheetsService.getToken()) {
+      const msg = 'กรุณาระบุ Webhook URL หรือ Spreadsheet ID ในหน้าซิงค์ข้อมูลก่อนเริ่มส่งยอด';
+      setSyncError(msg);
+      showToast(msg, 'error');
+      return;
+    }
+
     setSyncStatus('syncing');
     setSyncError(null);
+
     try {
-      await new Promise((res) => setTimeout(res, 1200));
+      const res = await GoogleSheetsService.pushSalesToSheet(items, {
+        spreadsheetId,
+        webhookUrl: googleWebhookUrl,
+        spreadsheetTitle: `${brandSettings.brandName} รายงานยอดขาย`,
+      });
+
+      const syncedIds = items.map((s) => s.id);
+      setSyncedSaleIds((prev) => {
+        const next = Array.from(new Set([...prev, ...syncedIds]));
+        setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, next);
+        return next;
+      });
+
       const now = new Date().toLocaleTimeString('th-TH');
       setLastSyncTime(now);
       setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, now);
+
+      if (res.spreadsheetId && !spreadsheetId) {
+        setSpreadsheetIdState(res.spreadsheetId);
+        setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, res.spreadsheetId);
+      }
+
       setSyncStatus('success');
-      addAuditLog('Google Sync', `ซิงค์ข้อมูลกับ Google Spreadsheet ล่าสุด (${sales.length} รายการ)`, 'success');
-      showToast(`ซิงค์ข้อมูลไปยัง Google Sheets สำเร็จ (${sales.length} รายการ)`, 'success');
+      addAuditLog('Google Sync', `ซิงค์ข้อมูลกับ Google Spreadsheet สำเร็จ (${items.length} รายการ)`, 'success');
+      showToast(`ซิงค์ข้อมูลไปยัง Google Sheets สำเร็จ (${items.length} รายการ)`, 'success');
     } catch (err: any) {
       setSyncStatus('error');
-      setSyncError(err.message || 'ไม่สามารถซิงค์ได้');
-      showToast('เกิดข้อผิดพลาดในการซิงค์', 'error');
+      const msg = err.message || 'ไม่สามารถซิงค์ได้';
+      setSyncError(msg);
+      showToast(`เกิดข้อผิดพลาดในการซิงค์: ${msg}`, 'error');
+      throw err;
+    }
+  };
+
+  const exportSalesToCsv = () => {
+    try {
+      GoogleSheetsService.exportSalesCsv(
+        sales,
+        `${brandSettings.brandName.replace(/\s+/g, '_')}_Sales_${new Date().toISOString().slice(0, 10)}.csv`
+      );
+      showToast('ดาวน์โหลดไฟล์ CSV สำหรับเปิดใน Google Sheets สำเร็จ', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'ไม่สามารถส่งออกไฟล์ได้', 'error');
+    }
+  };
+
+  const copySalesToClipboard = async () => {
+    try {
+      await GoogleSheetsService.copySalesTsv(sales);
+      showToast('คัดลอกตารางยอดขายแล้ว! สามารถกด Ctrl+V วางลงใน Google Sheet ได้ทันที', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'คัดลอกข้อมูลไม่สำเร็จ', 'error');
     }
   };
 
@@ -1210,11 +1341,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         connectGoogle,
         disconnectGoogle,
         spreadsheetId,
+        spreadsheetUrl,
         setSpreadsheetId,
+        googleWebhookUrl,
+        setGoogleWebhookUrl,
+        autoSyncSheets,
+        setAutoSyncSheets,
+        unsyncedSaleCount,
+        syncedSaleIds,
         syncWithGoogle,
         syncStatus,
         syncError,
         lastSyncTime,
+        exportSalesToCsv,
+        copySalesToClipboard,
       }}
     >
       {children}

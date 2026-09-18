@@ -21,6 +21,9 @@ import {
   Receipt,
   History,
   ArrowRight,
+  FileSpreadsheet,
+  ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { SizeOption, BaseOption, CartItem, ProductConfig, SaleItem } from '../types';
@@ -39,6 +42,13 @@ export const SalesEntryView: React.FC = () => {
     showToast,
     sales,
     deleteSale,
+    googleWebhookUrl,
+    spreadsheetId,
+    spreadsheetUrl,
+    autoSyncSheets,
+    unsyncedSaleCount,
+    syncWithGoogle,
+    syncStatus,
   } = useApp();
 
   // Search
@@ -289,6 +299,74 @@ export const SalesEntryView: React.FC = () => {
 
   return (
     <div id="sales-entry-view" className="space-y-4 pb-28">
+      {/* Google Sheets Live Sync Banner */}
+      <div className={`rounded-2xl p-3 sm:px-4 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 border text-xs ${
+        googleWebhookUrl || spreadsheetId
+          ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+          : 'bg-amber-50 border-amber-200 text-amber-900'
+      }`}>
+        <div className="flex items-center gap-2">
+          <FileSpreadsheet className={`w-4 h-4 shrink-0 ${googleWebhookUrl || spreadsheetId ? 'text-emerald-600' : 'text-amber-600'}`} />
+          {googleWebhookUrl || spreadsheetId ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-semibold text-emerald-800">
+                {autoSyncSheets ? 'ซิงค์กับ Google Sheet อัตโนมัติ: เปิดอยู่' : 'เชื่อมต่อ Google Sheet แล้ว (ซิงค์ด้วยตนเอง)'}
+              </span>
+              {unsyncedSaleCount > 0 ? (
+                <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px]">
+                  รอส่ง {unsyncedSaleCount} รายการ
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 bg-emerald-200/70 text-emerald-800 rounded-full font-bold text-[10px]">
+                  ส่งยอดแล้วทุกบิล
+                </span>
+              )}
+            </div>
+          ) : (
+            <div>
+              <span className="font-bold text-amber-800">ยังไม่ได้ตั้งค่า Google Sheet: </span>
+              <span className="text-amber-700">ยอดขายจะถูกบันทึกในเครื่องก่อน</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          {unsyncedSaleCount > 0 && (googleWebhookUrl || spreadsheetId) && (
+            <button
+              onClick={() => syncWithGoogle()}
+              disabled={syncStatus === 'syncing'}
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-[11px] flex items-center gap-1 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+              <span>{syncStatus === 'syncing' ? 'กำลังส่ง...' : `ส่งยอดคงค้าง (${unsyncedSaleCount})`}</span>
+            </button>
+          )}
+
+          {spreadsheetUrl && (
+            <a
+              href={spreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-semibold rounded-lg text-[11px] flex items-center gap-1 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>เปิดไฟล์ Sheet</span>
+            </a>
+          )}
+
+          <button
+            onClick={() => setActiveTab('sheets-sync')}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
+              googleWebhookUrl || spreadsheetId
+                ? 'text-emerald-700 hover:bg-emerald-100/60'
+                : 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
+            }`}
+          >
+            {googleWebhookUrl || spreadsheetId ? 'ตั้งค่าการซิงค์' : 'เชื่อมต่อ Google Sheet ที่นี่'}
+          </button>
+        </div>
+      </div>
+
       {/* Header & Quick Customer Switcher */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-100 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">

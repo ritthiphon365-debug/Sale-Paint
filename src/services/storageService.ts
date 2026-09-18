@@ -17,6 +17,9 @@ export const StorageKeys = {
   BRAND_SETTINGS: `${STORAGE_PREFIX}brandSettings`,
   USER_SESSION: `${STORAGE_PREFIX}userSession`,
   GOOGLE_SHEET_CONFIG: `${STORAGE_PREFIX}googleSheetConfig`,
+  GOOGLE_WEBHOOK_URL: `${STORAGE_PREFIX}googleWebhookUrl`,
+  GOOGLE_AUTO_SYNC: `${STORAGE_PREFIX}googleAutoSync`,
+  GOOGLE_SYNCED_IDS: `${STORAGE_PREFIX}googleSyncedIds`,
 };
 
 export function hasStoredKey(key: string): boolean {

@@ -10,13 +10,25 @@ import {
   FileSpreadsheet,
   Layers,
   ChevronDown,
+  RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { SaleItem } from '../types';
 import { exportSalesToExcel } from '../services/excelService';
 
 export const HistoryView: React.FC = () => {
-  const { sales, deleteSale, setModalOpen } = useApp();
+  const {
+    sales,
+    deleteSale,
+    setModalOpen,
+    syncWithGoogle,
+    syncStatus,
+    spreadsheetUrl,
+    googleWebhookUrl,
+    spreadsheetId,
+    setActiveTab,
+  } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'all' | 'month' | 'day'>('all');
@@ -67,6 +79,27 @@ export const HistoryView: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={() => syncWithGoogle(filteredSales)}
+            disabled={syncStatus === 'syncing' || filteredSales.length === 0}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-semibold px-3.5 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+            title="ส่งยอดขายชุดนี้เข้า Google Sheets ทันที"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+            <span>{syncStatus === 'syncing' ? 'กำลังส่งข้อมูล...' : `ส่งเข้า Google Sheet (${filteredSales.length})`}</span>
+          </button>
+          {spreadsheetUrl && (
+            <a
+              href={spreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 text-xs md:text-sm font-semibold px-3 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors"
+              title="เปิดดูไฟล์ Google Sheet ในแท็บใหม่"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>เปิด Sheet</span>
+            </a>
+          )}
+          <button
             onClick={() => setModalOpen('import-sales')}
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-semibold px-3.5 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
             title="นำเข้าประวัติยอดขายจากแอปเดิมด้วยไฟล์ Excel"
@@ -76,7 +109,7 @@ export const HistoryView: React.FC = () => {
           </button>
           <button
             onClick={handleExportExcel}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
+            className="bg-slate-800 hover:bg-slate-900 text-white text-xs md:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>ส่งออก Excel</span>
