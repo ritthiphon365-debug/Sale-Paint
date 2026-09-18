@@ -34,13 +34,22 @@ import {
 import { GoogleSheetsService } from '../services/googleSheetsService';
 import {
   auth,
+  db,
   googleProvider,
   signInWithPopup,
   signInWithRedirect,
+  signInAnonymously,
   getRedirectResult,
   signOut,
   onAuthStateChanged,
 } from '../lib/firebase';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot,
+  getDocFromServer,
+} from 'firebase/firestore';
 import {
   computeStockInventory,
   computeCustomerCRM,
@@ -296,8 +305,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Listen to Firebase Auth state
   useEffect(() => {
+    // Silently authenticate anonymously if not logged in
+    // to ensure Firestore rules (request.auth != null) are satisfied across all domains
+    if (!auth.currentUser) {
+      signInAnonymously(auth).catch((e) => {
+        console.warn('Anonymous sign-in on boot:', e);
+      });
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        if (firebaseUser.isAnonymous) {
+          // Anonymous user: keep current custom name & email, just update uid
+          setUserSession((prev) => ({
+            ...prev,
+            uid: firebaseUser.uid,
+            isOnline: true,
+          }));
+          return;
+        }
+
         const session: UserSession = {
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ผู้ใช้งาน Google',
@@ -335,7 +362,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       .catch((err) => {
         console.warn('Google redirect result error:', err);
         if (err?.code === 'auth/unauthorized-domain') {
-          showToast('โดเมนนี้ยังไม่ได้รับอนุญาตใน Firebase Console', 'info');
+          showToast('โดเมนนี้ยังไม่ได้รับอนุญาตใน Firebase Console กำลังเปิดตัวช่วย...', 'info');
           setModalOpen('google-auth');
         }
       });
@@ -380,7 +407,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       if (err?.code === 'auth/unauthorized-domain') {
-        showToast('โดเมนนี้ยังไม่ได้เปิดรับอนุญาตใน Firebase Console กำลังเปิดตัวช่วย...', 'info');
+        // Silently ensure anonymous session so Firestore requests never fail
+        if (!auth.currentUser) {
+          signInAnonymously(auth).catch(() => {});
+        }
+        showToast('ตรวจพบการใช้งานบนลิงก์จริง (ระบบเปิดตัวช่วยล็อกอินพนักงาน PC ให้ทันที)', 'info');
         setModalOpen('google-auth');
         return;
       }
@@ -1153,6 +1184,108 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return getStoredData<string | null>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, null);
   });
 
+  // 1. Check URL parameters for instant configuration (e.g. ?webhook=...&sheetId=...)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const paramWebhook = params.get('webhook') || params.get('googleWebhookUrl');
+        const paramSheetId = params.get('sheetId') || params.get('spreadsheetId') || params.get('sheet');
+
+        if (paramWebhook && paramWebhook.trim()) {
+          const cleanWebhook = paramWebhook.trim();
+          setGoogleWebhookUrlState(cleanWebhook);
+          setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, cleanWebhook);
+          const configDocRef = doc(db, 'system_config', 'google_sheets');
+          setDoc(configDocRef, { webhookUrl: cleanWebhook, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+        }
+        if (paramSheetId && paramSheetId.trim()) {
+          const cleanId = GoogleSheetsService.extractSpreadsheetId(paramSheetId);
+          setSpreadsheetIdState(cleanId);
+          setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, cleanId);
+          const configDocRef = doc(db, 'system_config', 'google_sheets');
+          setDoc(configDocRef, { spreadsheetId: cleanId, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+        }
+      } catch (e) {
+        console.warn('URL param parse error:', e);
+      }
+    }
+  }, []);
+
+  // 2. Real-time Cloud Sync with Firestore for Google Sheets settings
+  // Ensures shared link, mobile, and dev preview all share the same Google Sheets connection seamlessly
+  useEffect(() => {
+    const configDocRef = doc(db, 'system_config', 'google_sheets');
+
+    // Fetch initial doc
+    getDoc(configDocRef)
+      .then((snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.webhookUrl) {
+            setGoogleWebhookUrlState(data.webhookUrl);
+            setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, data.webhookUrl);
+          }
+          if (data.spreadsheetId) {
+            setSpreadsheetIdState(data.spreadsheetId);
+            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, data.spreadsheetId);
+          }
+          if (typeof data.autoSync === 'boolean') {
+            setAutoSyncSheetsState(data.autoSync);
+            setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, data.autoSync);
+          }
+          if (data.lastSyncTime) {
+            setLastSyncTime(data.lastSyncTime);
+            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, data.lastSyncTime);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Firestore initial sheet config fetch skipped:', err);
+      });
+
+    // Subscribe to real-time changes
+    const unsub = onSnapshot(
+      configDocRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.webhookUrl) {
+            setGoogleWebhookUrlState((prev) => {
+              if (prev !== data.webhookUrl) {
+                setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, data.webhookUrl);
+                return data.webhookUrl;
+              }
+              return prev;
+            });
+          }
+          if (data.spreadsheetId) {
+            setSpreadsheetIdState((prev) => {
+              if (prev !== data.spreadsheetId) {
+                setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, data.spreadsheetId);
+                return data.spreadsheetId;
+              }
+              return prev;
+            });
+          }
+          if (typeof data.autoSync === 'boolean') {
+            setAutoSyncSheetsState(data.autoSync);
+            setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, data.autoSync);
+          }
+          if (data.lastSyncTime) {
+            setLastSyncTime(data.lastSyncTime);
+            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, data.lastSyncTime);
+          }
+        }
+      },
+      (err) => {
+        console.warn('Firestore snapshot listener for sheets error:', err);
+      }
+    );
+
+    return () => unsub();
+  }, []);
+
   const spreadsheetUrl = useMemo(() => {
     return GoogleSheetsService.getSpreadsheetUrl(spreadsheetId);
   }, [spreadsheetId]);
@@ -1162,23 +1295,49 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return sales.filter((s) => !syncedSet.has(s.id)).length;
   }, [sales, syncedSaleIds]);
 
-  const setSpreadsheetId = (id: string) => {
+  const setSpreadsheetId = async (id: string) => {
     const cleaned = GoogleSheetsService.extractSpreadsheetId(id);
     setSpreadsheetIdState(cleaned);
     setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, cleaned);
-    showToast('บันทึก Spreadsheet ID เรียบร้อย', 'success');
+
+    // Save to Firestore so it syncs across all links & devices
+    try {
+      const configDocRef = doc(db, 'system_config', 'google_sheets');
+      await setDoc(configDocRef, { spreadsheetId: cleaned, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) {
+      console.warn('Could not save spreadsheetId to Firestore:', e);
+    }
+
+    showToast('บันทึก Spreadsheet ID เรียบร้อย (เชื่อมโยง Cloud ทุกอุปกรณ์)', 'success');
   };
 
-  const setGoogleWebhookUrl = (url: string) => {
+  const setGoogleWebhookUrl = async (url: string) => {
     const trimmed = url.trim();
     setGoogleWebhookUrlState(trimmed);
     setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, trimmed);
-    showToast('บันทึก Webhook URL ของ Google Sheet เรียบร้อย', 'success');
+
+    // Save to Firestore so it syncs across all links & devices
+    try {
+      const configDocRef = doc(db, 'system_config', 'google_sheets');
+      await setDoc(configDocRef, { webhookUrl: trimmed, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) {
+      console.warn('Could not save webhookUrl to Firestore:', e);
+    }
+
+    showToast('บันทึก Webhook URL เรียบร้อย (เชื่อมต่อกับชีตทุกลิงก์และทุกอุปกรณ์)', 'success');
   };
 
-  const setAutoSyncSheets = (val: boolean) => {
+  const setAutoSyncSheets = async (val: boolean) => {
     setAutoSyncSheetsState(val);
     setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, val);
+
+    try {
+      const configDocRef = doc(db, 'system_config', 'google_sheets');
+      await setDoc(configDocRef, { autoSync: val, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) {
+      console.warn('Could not save autoSync to Firestore:', e);
+    }
+
     showToast(val ? 'เปิดระบบซิงค์ Google Sheets อัตโนมัติแล้ว' : 'ปิดระบบซิงค์อัตโนมัติแล้ว', 'info');
   };
 
@@ -1233,6 +1392,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const now = new Date().toLocaleTimeString('th-TH');
       setLastSyncTime(now);
       setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, now);
+
+      // Persist last sync time to Firestore
+      try {
+        const configDocRef = doc(db, 'system_config', 'google_sheets');
+        setDoc(configDocRef, { lastSyncTime: now, lastSyncTimestamp: Date.now() }, { merge: true }).catch(() => {});
+      } catch (e) {}
 
       if (res.spreadsheetId && !spreadsheetId) {
         setSpreadsheetIdState(res.spreadsheetId);

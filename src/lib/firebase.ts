@@ -5,6 +5,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  signInAnonymously,
   getRedirectResult,
   signOut,
   onAuthStateChanged,
@@ -24,5 +25,5 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-export { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged };
+export { signInWithPopup, signInWithRedirect, signInAnonymously, getRedirectResult, signOut, onAuthStateChanged };
 export type { User };

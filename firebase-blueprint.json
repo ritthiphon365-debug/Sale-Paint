@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global application configuration such as Google Sheets integration settings",
+      "type": "object",
+      "properties": {
+        "webhookUrl": { "type": "string" },
+        "spreadsheetId": { "type": "string" },
+        "autoSync": { "type": "boolean" },
+        "lastSyncTime": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "SaleRecord": {
+      "title": "SaleRecord",
+      "description": "Sales records entered by PC staff",
+      "type": "object",
+      "properties": {
+        "billId": { "type": "string" },
+        "date": { "type": "string" },
+        "productName": { "type": "string" },
+        "total": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/system_config/{configId}": {
+      "schema": "SystemConfig",
+      "description": "System wide integration settings"
+    },
+    "/sales/{saleId}": {
+      "schema": "SaleRecord",
+      "description": "Recorded sales items"
+    }
+  }
+}
