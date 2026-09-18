@@ -48,7 +48,7 @@ export const PwaInstallModal: React.FC = () => {
                 Official App Icon
               </span>
               <h3 className="text-sm font-bold text-white truncate">
-                Sale Paint Manager
+                Sale Paint Pro
               </h3>
               <p className="text-[11px] text-slate-300 line-clamp-2 mt-0.5">
                 ไอคอนความละเอียดสูง ออกแบบพิเศษสำหรับแสดงบน Desktop และหน้าจอโฮมมือถือ

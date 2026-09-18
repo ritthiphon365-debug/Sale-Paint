@@ -58,8 +58,8 @@ export const Sidebar: React.FC = () => {
           <div className="flex items-center gap-3">
             <img
               src="./favicon.png"
-              alt="App Logo"
-              className="w-10 h-10 rounded-xl object-cover shadow-md shadow-rose-950/40 shrink-0 border border-slate-700/50"
+              alt="Sale Paint Pro Logo"
+              className="w-10 h-10 rounded-xl object-cover shadow-md shadow-blue-950/50 shrink-0 border border-slate-700/60 ring-1 ring-blue-500/20"
             />
             <div className="overflow-hidden">
               <div className="flex items-center gap-2">

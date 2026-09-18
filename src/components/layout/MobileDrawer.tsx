@@ -84,8 +84,8 @@ export const MobileDrawer: React.FC = () => {
           <div className="flex items-center gap-2.5">
             <img
               src="./favicon.png"
-              alt="App Logo"
-              className="w-8 h-8 rounded-lg object-cover border border-slate-700/50 shadow-xs"
+              alt="Sale Paint Pro Logo"
+              className="w-8 h-8 rounded-lg object-cover border border-slate-700/60 ring-1 ring-blue-500/20 shadow-xs"
             />
             <div>
               <h2 className="font-bold text-white text-sm leading-tight">{brandSettings.brandName}</h2>

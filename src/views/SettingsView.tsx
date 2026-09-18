@@ -238,9 +238,32 @@ export const SettingsView: React.FC = () => {
 
       {/* Brand Form */}
       <form onSubmit={handleSaveBrand} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 space-y-4 text-xs">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-          <Store className="w-5 h-5 text-rose-600" />
-          <h2 className="font-bold text-base text-slate-900">ข้อมูลแบรนด์และสาขา</h2>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Store className="w-5 h-5 text-rose-600" />
+            <h2 className="font-bold text-base text-slate-900">ข้อมูลแบรนด์และสาขา</h2>
+          </div>
+          <span className="text-[11px] text-slate-400 font-medium">Sale Paint Pro</span>
+        </div>
+
+        {/* Current Official Icon Showcase */}
+        <div className="p-4 bg-slate-900 rounded-2xl text-white flex items-center gap-3.5 border border-slate-800">
+          <img
+            src="./icon-192.png"
+            alt="Sale Paint Pro Icon"
+            className="w-14 h-14 rounded-2xl object-cover ring-2 ring-blue-500/40 shadow-md shrink-0"
+          />
+          <div className="overflow-hidden flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white">ไอคอนประจำแอปพลิเคชัน (Official Icon)</span>
+              <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[9px] font-semibold">
+                Active
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-0.5">
+              ไอคอน Sale Paint Pro ใช้แสดงบนแท็บเบราว์เซอร์ (Favicon), หน้าจอโฮมมือถือ (PWA) และเมนูนำทาง
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

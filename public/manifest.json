@@ -1,27 +1,27 @@
 {
-  "name": "Sale Paint Manager",
-  "short_name": "Sale Paint",
-  "description": "ระบบบริหารงานขายแบบครบวงจร Mobile-first พร้อมสต็อก CRM คอมมิชชั่น MKS",
+  "name": "Sale Paint Pro",
+  "short_name": "Sale Paint Pro",
+  "description": "Sale Paint Pro - ระบบบริหารงานขายสีและเคลือบผิวครบวงจร Mobile-first พร้อมสต็อก CRM คอมมิชชั่น MKS",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#e11d48",
+  "background_color": "#081b3b",
+  "theme_color": "#0077ff",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "./icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "./icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-maskable-512.png",
+      "src": "./icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
