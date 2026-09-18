@@ -1,6 +1,15 @@
 // Firebase Client Initialization
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  onAuthStateChanged,
+  User,
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -15,5 +24,5 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-export { signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged };
+export { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged };
 export type { User };

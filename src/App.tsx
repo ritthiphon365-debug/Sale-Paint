@@ -27,6 +27,7 @@ import { ImportExportModal } from './components/modals/ImportExportModal';
 import { ImportSalesModal } from './components/modals/ImportSalesModal';
 import { PwaInstallModal } from './components/modals/PwaInstallModal';
 import { AuditLogsModal } from './components/modals/AuditLogsModal';
+import { GoogleAuthModal } from './components/modals/GoogleAuthModal';
 
 const AppContent: React.FC = () => {
   const { activeTab, isOnline, toastMessage } = useApp();
@@ -118,6 +119,7 @@ const AppContent: React.FC = () => {
       <ImportSalesModal />
       <PwaInstallModal />
       <AuditLogsModal />
+      <GoogleAuthModal />
     </div>
   );
 };

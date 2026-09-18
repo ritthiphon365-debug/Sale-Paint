@@ -32,7 +32,15 @@ import {
   INITIAL_YEAR_TARGETS,
 } from '../mockData';
 import { GoogleSheetsService } from '../services/googleSheetsService';
-import { auth, googleProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from '../lib/firebase';
+import {
+  auth,
+  googleProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  onAuthStateChanged,
+} from '../lib/firebase';
 import {
   computeStockInventory,
   computeCustomerCRM,
@@ -295,6 +303,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => unsubscribe();
   }, []);
 
+  // Process redirect auth result if user returned from signInWithRedirect
+  useEffect(() => {
+    let isMounted = true;
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user && isMounted) {
+          const user = result.user;
+          const session: UserSession = {
+            uid: user.uid,
+            name: user.displayName || user.email?.split('@')[0] || 'ผู้ใช้งาน Google',
+            email: user.email || '',
+            avatar: user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+            isOnline: true,
+          };
+          setUserSession(session);
+          setStoredData(StorageKeys.USER_SESSION, session);
+          addAuditLog('Settings Change', `เข้าสู่ระบบด้วยบัญชี Google (${user.email}) สำเร็จ (Redirect)`, 'success');
+          showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับคุณ ${session.name}`, 'success');
+        }
+      })
+      .catch((err) => {
+        console.warn('Google redirect result error:', err);
+        if (err?.code === 'auth/unauthorized-domain') {
+          showToast('โดเมนนี้ยังไม่ได้รับอนุญาตใน Firebase Console', 'info');
+          setModalOpen('google-auth');
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const updateUserSession = (updated: Partial<UserSession>) => {
     setUserSession((prev) => {
       const next = { ...prev, ...updated };
@@ -325,26 +365,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (err: any) {
       console.warn('Google sign-in error:', err);
 
-      // Do NOT create a fake Google session. If the browser blocks popups,
-      // use Firebase redirect as a real authentication fallback.
-      if (err?.code === 'auth/popup-blocked') {
-        try {
-          showToast('กำลังเปิดหน้า Google เพื่อเลือกบัญชี...', 'info');
-          await signInWithRedirect(auth, googleProvider);
-          return;
-        } catch (redirectErr: any) {
-          console.error('Google redirect sign-in error:', redirectErr);
-          showToast('ไม่สามารถเปิด Google ได้ กรุณาอนุญาต Popup/Redirect แล้วลองใหม่', 'error');
-          return;
-        }
-      }
-
-      if (err?.code === 'auth/popup-closed-by-user') {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
         showToast('ยกเลิกการเข้าสู่ระบบ Google แล้ว', 'info');
         return;
       }
 
-      showToast(`เข้าสู่ระบบ Google ไม่สำเร็จ${err?.message ? `: ${err.message}` : ''}`, 'error');
+      if (err?.code === 'auth/unauthorized-domain') {
+        showToast('โดเมนนี้ยังไม่ได้เปิดรับอนุญาตใน Firebase Console กำลังเปิดตัวช่วย...', 'info');
+        setModalOpen('google-auth');
+        return;
+      }
+
+      if (err?.code === 'auth/popup-blocked') {
+        const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
+        if (!isInsideIframe) {
+          try {
+            showToast('กำลังเปลี่ยนเส้นทางไปหน้า Google เพื่อเลือกบัญชี...', 'info');
+            await signInWithRedirect(auth, googleProvider);
+            return;
+          } catch (redirectErr: any) {
+            console.error('Google redirect sign-in error:', redirectErr);
+          }
+        }
+        showToast('เบราว์เซอร์บล็อกหน้าต่าง Popup กำลังเปิดตัวช่วย...', 'info');
+        setModalOpen('google-auth');
+        return;
+      }
+
+      showToast(`เข้าสู่ระบบ Google ขัดข้อง (${err?.code || 'Error'}) กำลังเปิดตัวช่วย...`, 'error');
+      setModalOpen('google-auth');
     }
   };
 

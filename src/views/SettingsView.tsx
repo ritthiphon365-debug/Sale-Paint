@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   Check,
   X,
+  HelpCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -29,6 +30,7 @@ export const SettingsView: React.FC = () => {
     loginWithGoogle,
     logout,
     showToast,
+    setModalOpen,
     resetSales,
     resetStock,
     resetCustomers,
@@ -136,16 +138,24 @@ export const SettingsView: React.FC = () => {
             <button
               type="button"
               onClick={loginWithGoogle}
-              className="px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 flex items-center gap-1.5 transition-colors font-medium text-[11px]"
+              className="px-3 py-1.5 rounded-xl bg-slate-900 text-white hover:bg-slate-800 flex items-center gap-1.5 transition-colors font-medium text-[11px] cursor-pointer active:scale-95"
             >
               <LogIn className="w-3.5 h-3.5 text-amber-400" />
               <span>{userSession.email ? 'สลับบัญชี Google' : 'เข้าสู่ระบบด้วย Google'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalOpen('google-auth')}
+              title="ตรวจสอบสิทธิ์และตัวช่วยล็อกอิน Google"
+              className="p-1.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer active:scale-95"
+            >
+              <HelpCircle className="w-4 h-4" />
             </button>
             {userSession.email && (
               <button
                 type="button"
                 onClick={logout}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 transition-colors font-medium text-[11px]"
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 transition-colors font-medium text-[11px] cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5 text-slate-400" />
                 <span>ออกจากระบบ</span>
