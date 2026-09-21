@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-09-21T07:40:09.949Z",
+  "targetEnvironment": "PostgreSQL Simulation & SQL Seed",
+  "isLiveSupabaseConnected": false,
+  "run1": {
+    "runNumber": 1,
+    "totalRecordsProcessed": 34,
+    "insertedCount": 34,
+    "updatedCount": 0,
+    "skippedCount": 0,
+    "errorCount": 0,
+    "databaseCounts": {
+      "bills": 0,
+      "sales": 0,
+      "products": 8,
+      "catalogItems": 25,
+      "stockIns": 0,
+      "systemConfigs": 1
+    },
+    "stateChecksum": "6d04e061a9ad2848d607c7c7b97a6e4175549c038b0904c53ac618c147aa6acb"
+  },
+  "run2": {
+    "runNumber": 2,
+    "totalRecordsProcessed": 34,
+    "insertedCount": 0,
+    "updatedCount": 34,
+    "skippedCount": 0,
+    "errorCount": 0,
+    "databaseCounts": {
+      "bills": 0,
+      "sales": 0,
+      "products": 8,
+      "catalogItems": 25,
+      "stockIns": 0,
+      "systemConfigs": 1
+    },
+    "stateChecksum": "6d04e061a9ad2848d607c7c7b97a6e4175549c038b0904c53ac618c147aa6acb"
+  },
+  "isIdempotent": true,
+  "summaryMessage": "PASS: 100% Idempotent. Run 2 resulted in 0 duplicate records and perfectly identical checksum."
+}

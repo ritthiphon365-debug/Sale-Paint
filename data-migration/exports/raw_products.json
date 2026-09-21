@@ -1,0 +1,262 @@
+[
+  {
+    "id": "prod-wb-01",
+    "sku": "WB-EXT-01",
+    "name": "WEATHERBOND",
+    "brand": "NIPPON PAINT",
+    "category": "สีทาภายนอกระดับพรีเมียม",
+    "availableSizes": [
+      "5GL",
+      "2.5GL",
+      "1GL"
+    ],
+    "hasBases": true,
+    "availableBases": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "hasFilmColor": true,
+    "filmColors": [
+      "กึ่งเงา (Semi-Gloss)",
+      "ด้าน (Matt)"
+    ],
+    "hasColorCode": true,
+    "basePrices": {
+      "5GL": 3450,
+      "2.5GL": 1850,
+      "1GL": 780,
+      "1/4GL": 240
+    },
+    "initialStock": {
+      "5GL_A": 18,
+      "5GL_B": 8,
+      "5GL_C": 4,
+      "2.5GL_A": 12,
+      "1GL_A": 25
+    },
+    "isQuickPick": true
+  },
+  {
+    "id": "prod-wba-02",
+    "sku": "WBA-ADV-02",
+    "name": "WEATHERBOND ADVANCE",
+    "brand": "NIPPON PAINT",
+    "category": "สีทาภายนอกสะท้อนความร้อน",
+    "availableSizes": [
+      "5GL",
+      "2.5GL",
+      "1GL"
+    ],
+    "hasBases": true,
+    "availableBases": [
+      "A",
+      "B",
+      "C"
+    ],
+    "hasFilmColor": true,
+    "filmColors": [
+      "กึ่งเงา",
+      "เนียน (Sheen)"
+    ],
+    "hasColorCode": true,
+    "basePrices": {
+      "5GL": 4150,
+      "2.5GL": 2250,
+      "1GL": 950,
+      "1/4GL": 290
+    },
+    "initialStock": {
+      "5GL_A": 10,
+      "5GL_B": 6,
+      "2.5GL_A": 14,
+      "1GL_A": 15
+    },
+    "isQuickPick": true
+  },
+  {
+    "id": "prod-wbm-03",
+    "sku": "WBM-MAX-03",
+    "name": "WEATHERBOND MAX",
+    "brand": "NIPPON PAINT",
+    "category": "สีทาภายนอกอัลตร้าพรีเมียม 15 ปี",
+    "availableSizes": [
+      "5GL",
+      "1GL"
+    ],
+    "hasBases": true,
+    "availableBases": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "hasFilmColor": true,
+    "filmColors": [
+      "กึ่งเงา (Semi-Gloss)"
+    ],
+    "hasColorCode": true,
+    "basePrices": {
+      "5GL": 4950,
+      "2.5GL": 2600,
+      "1GL": 1150,
+      "1/4GL": 340
+    },
+    "initialStock": {
+      "5GL_A": 12,
+      "5GL_B": 5,
+      "1GL_A": 8
+    },
+    "isQuickPick": true
+  },
+  {
+    "id": "prod-air-04",
+    "sku": "AIR-INT-04",
+    "name": "AIRCARE INTERIOR",
+    "brand": "NIPPON PAINT",
+    "category": "สีทาภายในฟอกอากาศ ปราศจากสารระเหย",
+    "availableSizes": [
+      "5GL",
+      "2.5GL",
+      "1GL"
+    ],
+    "hasBases": true,
+    "availableBases": [
+      "A",
+      "B"
+    ],
+    "hasFilmColor": true,
+    "filmColors": [
+      "ด้านพิเศษ (Dead Matt)",
+      "กึ่งเงา"
+    ],
+    "hasColorCode": true,
+    "basePrices": {
+      "5GL": 3890,
+      "2.5GL": 2050,
+      "1GL": 890,
+      "1/4GL": 260
+    },
+    "initialStock": {
+      "5GL_A": 20,
+      "2.5GL_A": 15,
+      "1GL_A": 30
+    },
+    "isQuickPick": true
+  },
+  {
+    "id": "prod-vin-05",
+    "sku": "VIN-PRM-05",
+    "name": "VINILEX 5000",
+    "brand": "NIPPON PAINT",
+    "category": "สีน้ำอะคริลิกคุณภาพสูง",
+    "availableSizes": [
+      "5GL",
+      "2.5GL",
+      "1GL",
+      "1/4GL"
+    ],
+    "hasBases": false,
+    "hasFilmColor": false,
+    "hasColorCode": false,
+    "basePrices": {
+      "5GL": 2250,
+      "2.5GL": 1180,
+      "1GL": 490,
+      "1/4GL": 150
+    },
+    "initialStock": {
+      "5GL_A": 35,
+      "2.5GL_A": 20,
+      "1GL_A": 40
+    },
+    "isQuickPick": true
+  },
+  {
+    "id": "prod-pri-06",
+    "sku": "PRI-QUICK-06",
+    "name": "QUICK SEALER PRIMER",
+    "brand": "NIPPON PAINT",
+    "category": "น้ำยารองพื้นปูนอเนกประสงค์สูตรน้ำมัน",
+    "availableSizes": [
+      "5GL",
+      "1GL"
+    ],
+    "hasBases": false,
+    "hasFilmColor": false,
+    "hasColorCode": false,
+    "basePrices": {
+      "5GL": 2950,
+      "2.5GL": 1600,
+      "1GL": 650,
+      "1/4GL": 200
+    },
+    "initialStock": {
+      "5GL_A": 22,
+      "1GL_A": 18
+    },
+    "isQuickPick": true
+  },
+  {
+    "id": "prod-boa-07",
+    "sku": "BOA-SHIELD-07",
+    "name": "BODYSGARD ROOF SHIELD",
+    "brand": "NIPPON PAINT",
+    "category": "สีทาหลังคาและกันซึมดาดฟ้า",
+    "availableSizes": [
+      "5GL",
+      "1GL"
+    ],
+    "hasBases": true,
+    "availableBases": [
+      "A",
+      "B"
+    ],
+    "hasFilmColor": true,
+    "filmColors": [
+      "กึ่งเงา"
+    ],
+    "hasColorCode": true,
+    "basePrices": {
+      "5GL": 3200,
+      "2.5GL": 1750,
+      "1GL": 720,
+      "1/4GL": 220
+    },
+    "initialStock": {
+      "5GL_A": 14,
+      "1GL_A": 12
+    },
+    "isQuickPick": false
+  },
+  {
+    "id": "prod-wood-08",
+    "sku": "WOOD-STAIN-08",
+    "name": "TIMBERSHIELD WOOD STAIN",
+    "brand": "NIPPON PAINT",
+    "category": "สีย้อมไม้ภายนอก ชนิดโปร่งแสง",
+    "availableSizes": [
+      "1GL",
+      "1/4GL"
+    ],
+    "hasBases": false,
+    "hasFilmColor": true,
+    "filmColors": [
+      "เงา (Gloss)",
+      "ด้าน (Matt)"
+    ],
+    "hasColorCode": true,
+    "basePrices": {
+      "5GL": 0,
+      "2.5GL": 0,
+      "1GL": 890,
+      "1/4GL": 280
+    },
+    "initialStock": {
+      "1GL_A": 16,
+      "1/4GL_A": 20
+    },
+    "isQuickPick": false
+  }
+]

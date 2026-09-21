@@ -1,0 +1,9 @@
+name = "salepaint-api-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-09-21"
+
+[vars]
+ENVIRONMENT = "production"
+
+# Supabase secrets must be populated via wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# or Cloudflare Dashboard

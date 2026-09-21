@@ -1,0 +1,16 @@
+[
+  {
+    "key": "google_sheets",
+    "value": {
+      "spreadsheetId": "",
+      "spreadsheetName": "Nippon Paint Sales Main Sheet",
+      "webhookUrl": "",
+      "autoSync": true,
+      "lastSyncTime": null,
+      "updatedAt": "2026-09-21T07:40:09.929Z",
+      "ownerEmail": "ritthiphon.p@nipponpaint.co.th"
+    },
+    "updated_at": "2026-09-21T07:40:09.932Z",
+    "updated_by": "system_phase2_migration"
+  }
+]

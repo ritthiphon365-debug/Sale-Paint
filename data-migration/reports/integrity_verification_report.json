@@ -1,0 +1,79 @@
+{
+  "timestamp": "2026-09-21T07:40:09.950Z",
+  "isIntegrityVerified": true,
+  "countsComparison": [
+    {
+      "collection": "catalog_items",
+      "sourceCount": 25,
+      "destinationCount": 25,
+      "match": true
+    },
+    {
+      "collection": "products",
+      "sourceCount": 8,
+      "destinationCount": 8,
+      "match": true
+    },
+    {
+      "collection": "sales",
+      "sourceCount": 0,
+      "destinationCount": 0,
+      "match": true
+    },
+    {
+      "collection": "stock_ins",
+      "sourceCount": 0,
+      "destinationCount": 0,
+      "match": true
+    },
+    {
+      "collection": "system_configs",
+      "sourceCount": 1,
+      "destinationCount": 1,
+      "match": true
+    }
+  ],
+  "financialVerification": {
+    "sourceSalesTotalSum": 0,
+    "destinationSalesTotalSum": 0,
+    "destinationBillsTotalSum": 0,
+    "salesDiff": 0,
+    "billsDiff": 0,
+    "isBalanced": true
+  },
+  "sampleSpotChecks": [
+    {
+      "tableName": "catalog_items (first)",
+      "sampleId": "cat-wb-01",
+      "sourceSummary": "WB-5GL-A-SG | WEATHERBOND | ฿3450",
+      "destinationSummary": "WB-5GL-A-SG | WEATHERBOND | ฿3450",
+      "fieldsMatch": true
+    },
+    {
+      "tableName": "catalog_items (last)",
+      "sampleId": "cat-pri-02",
+      "sourceSummary": "PRI-1GL | QUICK SEALER PRIMER | ฿650",
+      "destinationSummary": "PRI-1GL | QUICK SEALER PRIMER | ฿650",
+      "fieldsMatch": true
+    },
+    {
+      "tableName": "products (first)",
+      "sampleId": "prod-wb-01",
+      "sourceSummary": "WB-EXT-01 | WEATHERBOND | bases:true",
+      "destinationSummary": "WB-EXT-01 | WEATHERBOND | bases:true",
+      "fieldsMatch": true
+    },
+    {
+      "tableName": "system_configs (google_sheets)",
+      "sampleId": "google_sheets",
+      "sourceSummary": "spreadsheetId: \"\"",
+      "destinationSummary": "spreadsheetId: \"\"",
+      "fieldsMatch": true
+    }
+  ],
+  "checksums": {
+    "sourceHash": "e5c679b29394fa4a1e87b319c6cd542af0d883f308c6c0c5178f6004c79be91a",
+    "destinationHash": "7cfe905eaf16d2f2d6162334caae2417f8ba182ea2f62b675a68b4a5ed414ee2"
+  },
+  "overallStatus": "PASS"
+}

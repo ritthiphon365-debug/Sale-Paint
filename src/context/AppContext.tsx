@@ -61,8 +61,14 @@ import {
   computeCustomerCRM,
   computeCommission,
 } from '../services/calculationService';
+import { DualWriteClient } from '../services/dualWriteClient';
+import { DataService, RealtimeService } from '../services/api';
 
 interface AppContextType {
+  // Phase 4 Backend Cutover & Realtime
+  dataBackend: 'supabase' | 'firebase';
+  setDataBackend: (backend: 'supabase' | 'firebase') => void;
+
   // Navigation
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -238,6 +244,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setTimeout(() => {
       setToastMessage((cur) => (cur?.text === text ? null : cur));
     }, 3200);
+  };
+
+  // Phase 4 Backend Selection (Default: 'supabase' Primary with Firebase fallback)
+  const [dataBackend, setDataBackendState] = useState<'supabase' | 'firebase'>(() => {
+    return DataService.backend;
+  });
+
+  const setDataBackend = (target: 'supabase' | 'firebase') => {
+    DataService.setBackend(target);
+    setDataBackendState(target);
+    showToast(`สลับช่องทางข้อมูลหลักเป็น: ${target === 'supabase' ? 'Supabase (API Gateway)' : 'Firebase Firestore'}`, 'info');
   };
 
   // User Session
@@ -432,14 +449,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.PRODUCTS, updatedProducts);
 
     if (catalogDelta.length) {
-      persistItemsToFirestore(catalogCollectionRef, catalogDelta).catch((err) => {
-        console.error('[Firestore] Failed to sync catalog item(s):', err);
-        showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
-      });
+      persistItemsToFirestore(catalogCollectionRef, catalogDelta)
+        .then(() => {
+          DualWriteClient.syncUpsertCatalogItems(catalogDelta).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for catalog delta:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to sync catalog item(s):', err);
+          showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
     }
-    persistItemsToFirestore(productsCollectionRef, updatedProducts).catch((err) => {
-      console.error('[Firestore] Failed to sync products:', err);
-    });
+    persistItemsToFirestore(productsCollectionRef, updatedProducts)
+      .then(() => {
+        DualWriteClient.syncUpsertProducts(updatedProducts).catch((dwErr) => {
+          console.warn('[DualWrite] Supabase sync warning for derived products:', dwErr);
+        });
+      })
+      .catch((err) => {
+        console.error('[Firestore] Failed to sync products:', err);
+      });
   };
 
   const addCatalogItem = (item: CatalogItem) => {
@@ -471,9 +500,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCatalogItems(updated);
     setStoredData(StorageKeys.CATALOG_ITEMS, updated);
     syncCatalogAndProducts(updated, []);
-    deleteItemsFromFirestore(catalogCollectionRef, [id]).catch((err) => {
-      console.error('[Firestore] Failed to delete catalog item:', err);
-    });
+    deleteItemsFromFirestore(catalogCollectionRef, [id])
+      .then(() => {
+        DualWriteClient.syncDeleteCatalogItems([id]).catch((dwErr) => {
+          console.warn('[DualWrite] Supabase sync warning for deleteCatalogItem:', dwErr);
+        });
+      })
+      .catch((err) => {
+        console.error('[Firestore] Failed to delete catalog item:', err);
+      });
     addAuditLog('Product Edit', `ลบสินค้าจากแคตตาล็อก: ${target?.name || id}`, 'warning');
     showToast('ลบรายการสินค้าเรียบร้อย', 'info');
   };
@@ -562,10 +597,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [prod, ...products];
     setProducts(updated);
     setStoredData(StorageKeys.PRODUCTS, updated);
-    persistItemsToFirestore(productsCollectionRef, [prod]).catch((err) => {
-      console.error('[Firestore] Failed to sync product:', err);
-      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
-    });
+
+    if (dataBackend === 'supabase') {
+      DataService.upsertProducts([prod]).catch(console.warn);
+      persistItemsToFirestore(productsCollectionRef, [prod]).catch(console.warn);
+    } else {
+      persistItemsToFirestore(productsCollectionRef, [prod])
+        .then(() => {
+          DualWriteClient.syncUpsertProducts([prod]).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for addProduct:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to sync product:', err);
+          showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
+    }
     addAuditLog('Product Edit', `เพิ่มสินค้าใหม่: ${prod.name} (${prod.sku})`, 'info');
     showToast(`เพิ่มสินค้า ${prod.name} เรียบร้อย`, 'success');
   };
@@ -574,10 +621,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = products.map((p) => (p.id === prod.id ? prod : p));
     setProducts(updated);
     setStoredData(StorageKeys.PRODUCTS, updated);
-    persistItemsToFirestore(productsCollectionRef, [prod]).catch((err) => {
-      console.error('[Firestore] Failed to sync product:', err);
-      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
-    });
+
+    if (dataBackend === 'supabase') {
+      DataService.upsertProducts([prod]).catch(console.warn);
+      persistItemsToFirestore(productsCollectionRef, [prod]).catch(console.warn);
+    } else {
+      persistItemsToFirestore(productsCollectionRef, [prod])
+        .then(() => {
+          DualWriteClient.syncUpsertProducts([prod]).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for updateProduct:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to sync product:', err);
+          showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
+    }
     addAuditLog('Product Edit', `แก้ไขข้อมูลสินค้า: ${prod.name}`, 'info');
     showToast(`อัปเดตข้อมูล ${prod.name} สำเร็จ`, 'success');
   };
@@ -587,9 +646,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = products.filter((p) => p.id !== id);
     setProducts(updated);
     setStoredData(StorageKeys.PRODUCTS, updated);
-    deleteItemsFromFirestore(productsCollectionRef, [id]).catch((err) => {
-      console.error('[Firestore] Failed to delete product:', err);
-    });
+
+    if (dataBackend === 'supabase') {
+      DataService.deleteProduct(id).catch(console.warn);
+      deleteItemsFromFirestore(productsCollectionRef, [id]).catch(console.warn);
+    } else {
+      deleteItemsFromFirestore(productsCollectionRef, [id])
+        .then(() => {
+          DualWriteClient.syncDeleteProducts([id]).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for deleteProduct:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to delete product:', err);
+        });
+    }
     addAuditLog('Product Edit', `ลบสินค้า: ${target?.name || id}`, 'warning');
     showToast('ลบรายการสินค้าเรียบร้อย', 'info');
   };
@@ -719,10 +790,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newRecord, ...stockIns];
     setStockIns(updated);
     setStoredData(StorageKeys.STOCK_IN, updated);
-    persistItemsToFirestore(stockInCollectionRef, [newRecord]).catch((err) => {
-      console.error('[Firestore] Failed to sync stock-in:', err);
-      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
-    });
+
+    if (dataBackend === 'supabase') {
+      DataService.addStockIn(newRecord).catch(console.warn);
+      persistItemsToFirestore(stockInCollectionRef, [newRecord]).catch(console.warn);
+    } else {
+      persistItemsToFirestore(stockInCollectionRef, [newRecord])
+        .then(() => {
+          DualWriteClient.syncUpsertStockIns([newRecord]).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for addStockIn:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to sync stock-in:', err);
+          showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
+    }
     addAuditLog('Stock In', `รับสต็อกเข้า ${stk.productName} [${stk.size}] +${stk.quantity} หน่วย`, 'success');
     showToast(`เติมสต็อก ${stk.productName} +${stk.quantity} เรียบร้อย`, 'success');
   };
@@ -736,10 +819,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [...newRecords, ...stockIns];
     setStockIns(updated);
     setStoredData(StorageKeys.STOCK_IN, updated);
-    persistItemsToFirestore(stockInCollectionRef, newRecords).catch((err) => {
-      console.error('[Firestore] Failed to sync bulk stock-in:', err);
-      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
-    });
+
+    if (dataBackend === 'supabase') {
+      DataService.bulkAddStockIn(newRecords).catch(console.warn);
+      persistItemsToFirestore(stockInCollectionRef, newRecords).catch(console.warn);
+    } else {
+      persistItemsToFirestore(stockInCollectionRef, newRecords)
+        .then(() => {
+          DualWriteClient.syncUpsertStockIns(newRecords).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for bulkAddStockIn:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to sync bulk stock-in:', err);
+          showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
+    }
     addAuditLog('Stock In', `รับสต็อกเข้าแบบกลุ่ม (Bulk) รวม ${items.length} รายการ`, 'success');
     showToast(`เติมสต็อกแบบกลุ่มสำเร็จ ${items.length} รายการ`, 'success');
   };
@@ -826,12 +921,60 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.SALES, updatedSales);
     setCart([]);
 
-    // Persist each sale as its own Firestore document so multiple devices
-    // can create/update sales concurrently without overwriting each other.
-    persistSalesToFirestore(newSaleItems).catch((err) => {
-      console.error('[Firestore] Failed to save sale:', err);
-      showToast('บันทึกในเครื่องแล้ว แต่ส่งข้อมูลไปฐานข้อมูลกลางไม่สำเร็จ', 'error');
-    });
+    // Phase 4: Primary Checkout via API Gateway (with Atomic Stock safety)
+    if (dataBackend === 'supabase') {
+      DataService.checkout({
+        bill: {
+          id: billId,
+          billNo: billId,
+          date: today,
+          customerName: customerName || undefined,
+          customerPhone: customerPhone || undefined,
+          salesperson: userSession.name || 'พนักงานขาย',
+          salespersonEmail: userSession.email || undefined,
+          branch: 'สาขาหลัก',
+          createdAt: nowIso,
+        },
+        items: newSaleItems,
+        allowOversell: true,
+      })
+        .then(() => {
+          // Keep Firestore fallback synchronized
+          persistSalesToFirestore(newSaleItems).catch(console.warn);
+        })
+        .catch((apiErr) => {
+          console.warn('[DataService] Checkout warning, falling back to direct persistence:', apiErr);
+          persistSalesToFirestore(newSaleItems).catch((err) => {
+            console.error('[Firestore] Failed to save sale:', err);
+            showToast('บันทึกในเครื่องแล้ว แต่ส่งข้อมูลไปฐานข้อมูลกลางไม่สำเร็จ', 'error');
+          });
+        });
+    } else {
+      // Legacy Firestore primary path with dual-write to Supabase
+      persistSalesToFirestore(newSaleItems)
+        .then(() => {
+          DualWriteClient.syncBillAndSales(
+            {
+              id: billId,
+              billNo: billId,
+              date: today,
+              customerName: customerName || undefined,
+              customerPhone: customerPhone || undefined,
+              salesperson: userSession.name || 'พนักงานขาย',
+              salespersonEmail: userSession.email || undefined,
+              branch: 'สาขาหลัก',
+              createdAt: nowIso,
+            },
+            newSaleItems
+          ).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync error on saveBill:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to save sale:', err);
+          showToast('บันทึกในเครื่องแล้ว แต่ส่งข้อมูลไปฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
+    }
 
     const billTotal = newSaleItems.reduce((acc, i) => acc + i.total, 0);
     addAuditLog('Add Sale', `เปิดบิล ${billId} (${customerName || 'ลูกค้าทั่วไป'}) ยอดรวม ฿${billTotal.toLocaleString()}`, 'success');
@@ -877,10 +1020,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSales(newSales);
     setStoredData(StorageKeys.SALES, newSales);
     const firestoreSale = { ...updated, updatedAt: new Date().toISOString() };
-    setDoc(doc(db, 'sales', updated.id), firestoreSale, { merge: true }).catch((err) => {
-      console.error('[Firestore] Failed to update sale:', err);
-      showToast('แก้ไขในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
-    });
+
+    if (dataBackend === 'supabase') {
+      DataService.updateSale(updated.id, firestoreSale).catch(console.warn);
+      setDoc(doc(db, 'sales', updated.id), firestoreSale, { merge: true }).catch(console.warn);
+    } else {
+      setDoc(doc(db, 'sales', updated.id), firestoreSale, { merge: true })
+        .then(() => {
+          DualWriteClient.syncUpdateSale(firestoreSale).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for updateSale:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to update sale:', err);
+          showToast('แก้ไขในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
+    }
     addAuditLog('Edit Sale', `แก้ไขรายการขาย #${updated.id} (${updated.productName})`, 'info');
     showToast('แก้ไขข้อมูลการขายสำเร็จ', 'success');
   };
@@ -890,10 +1045,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newSales = sales.filter((s) => s.id !== saleId);
     setSales(newSales);
     setStoredData(StorageKeys.SALES, newSales);
-    deleteSalesFromFirestore([saleId]).catch((err) => {
-      console.error('[Firestore] Failed to delete sale:', err);
-      showToast('ลบในเครื่องแล้ว แต่ลบจากฐานข้อมูลกลางไม่สำเร็จ', 'error');
-    });
+
+    if (dataBackend === 'supabase') {
+      DataService.deleteSale(saleId).catch(console.warn);
+      deleteSalesFromFirestore([saleId]).catch(console.warn);
+    } else {
+      deleteSalesFromFirestore([saleId])
+        .then(() => {
+          DualWriteClient.syncDeleteSale(saleId).catch((dwErr) => {
+            console.warn('[DualWrite] Supabase sync warning for deleteSale:', dwErr);
+          });
+        })
+        .catch((err) => {
+          console.error('[Firestore] Failed to delete sale:', err);
+          showToast('ลบในเครื่องแล้ว แต่ลบจากฐานข้อมูลกลางไม่สำเร็จ', 'error');
+        });
+    }
     addAuditLog('Delete Sale', `ลบรายการขาย: ${target?.productName} บิล ${target?.billId}`, 'danger');
     showToast('ลบรายการขายเรียบร้อยแล้ว', 'info');
   };
@@ -962,6 +1129,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Realtime shared sales: every device receives sales changes immediately.
   useEffect(() => {
+    if (dataBackend === 'supabase') {
+      DataService.getSales()
+        .then((s) => {
+          if (s && s.length > 0) {
+            setSales(s);
+            setStoredData(StorageKeys.SALES, s);
+          }
+        })
+        .catch(console.warn);
+
+      const unsub = RealtimeService.subscribe('sales', async () => {
+        try {
+          const s = await DataService.getSales();
+          if (s) {
+            setSales(s);
+            setStoredData(StorageKeys.SALES, s);
+          }
+        } catch (e) {
+          console.warn('[Realtime] Sales refresh error:', e);
+        }
+      });
+      return unsub;
+    }
+
     let active = true;
     let unsubscribe: (() => void) | null = null;
 
@@ -1018,10 +1209,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       active = false;
       unsubscribe?.();
     };
-  }, []);
+  }, [dataBackend]);
 
   // Realtime shared catalog: ทุกเครื่องเห็นฐานข้อมูลสินค้าตรงกันทันที
   useEffect(() => {
+    if (dataBackend === 'supabase') {
+      DataService.getCatalog()
+        .then((items) => {
+          if (items && items.length > 0) {
+            setCatalogItems(items);
+            setStoredData(StorageKeys.CATALOG_ITEMS, items);
+          }
+        })
+        .catch(console.warn);
+
+      const unsub = RealtimeService.subscribe('catalog_items', async () => {
+        try {
+          const items = await DataService.getCatalog();
+          if (items) {
+            setCatalogItems(items);
+            setStoredData(StorageKeys.CATALOG_ITEMS, items);
+          }
+        } catch (e) {
+          console.warn('[Realtime] Catalog refresh error:', e);
+        }
+      });
+      return unsub;
+    }
+
     return setupRealtimeCollection<CatalogItem>(
       catalogCollectionRef,
       'catalog_migration',
@@ -1032,10 +1247,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataBackend]);
 
   // Realtime shared products (ใช้คำนวณสต็อก): ทุกเครื่องเห็นตรงกันทันที
   useEffect(() => {
+    if (dataBackend === 'supabase') {
+      DataService.getProducts()
+        .then((items) => {
+          if (items && items.length > 0) {
+            setProducts(items);
+            setStoredData(StorageKeys.PRODUCTS, items);
+          }
+        })
+        .catch(console.warn);
+
+      const unsub = RealtimeService.subscribe('products', async () => {
+        try {
+          const items = await DataService.getProducts();
+          if (items) {
+            setProducts(items);
+            setStoredData(StorageKeys.PRODUCTS, items);
+          }
+        } catch (e) {
+          console.warn('[Realtime] Products refresh error:', e);
+        }
+      });
+      return unsub;
+    }
+
     return setupRealtimeCollection<ProductConfig>(
       productsCollectionRef,
       'products_migration',
@@ -1046,10 +1285,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataBackend]);
 
   // Realtime shared stock-in records: ทุกเครื่องเห็นประวัติรับสต็อกตรงกันทันที
   useEffect(() => {
+    if (dataBackend === 'supabase') {
+      DataService.getStockIns()
+        .then((items) => {
+          if (items && items.length > 0) {
+            setStockIns(items);
+            setStoredData(StorageKeys.STOCK_IN, items);
+          }
+        })
+        .catch(console.warn);
+
+      const unsub = RealtimeService.subscribe('stock_ins', async () => {
+        try {
+          const items = await DataService.getStockIns();
+          if (items) {
+            setStockIns(items);
+            setStoredData(StorageKeys.STOCK_IN, items);
+          }
+        } catch (e) {
+          console.warn('[Realtime] Stock-ins refresh error:', e);
+        }
+      });
+      return unsub;
+    }
+
     return setupRealtimeCollection<StockInRecord>(
       stockInCollectionRef,
       'stock_in_migration',
@@ -1061,7 +1324,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataBackend]);
 
   // Computed Stock
   const computedStock = useMemo(() => {
@@ -1521,7 +1784,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       Promise.all([
         clearFirestoreCollection(salesCollectionRef),
         clearFirestoreCollection(stockInCollectionRef),
-      ]).catch((err) => console.error('[Firestore] Failed to clear sales/stock-in on reset:', err));
+      ])
+        .then(() => {
+          DualWriteClient.syncClearCollection('sales').catch(console.warn);
+          DualWriteClient.syncClearCollection('bills').catch(console.warn);
+          DualWriteClient.syncClearCollection('stock_ins').catch(console.warn);
+        })
+        .catch((err) => console.error('[Firestore] Failed to clear sales/stock-in on reset:', err));
 
       if (catalogMode === 'sample') {
         // ใส่สินค้าตัวอย่างกลับ (ไว้สำหรับทดลองใช้งาน/สาธิต)
@@ -1810,6 +2079,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ownerEmail: userSession.email || 'pc-app@nippon.com',
       };
       await setDoc(configDocRef, payload, { merge: true });
+      DualWriteClient.syncSystemConfig('google_sheets', payload).catch(console.warn);
       setCloudSpreadsheetInfo((prev) => ({ ...prev, ...payload }));
     } catch (e) {
       console.warn('Could not save spreadsheetId to Firestore:', e);
@@ -1967,7 +2237,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Save to Firestore so it syncs across all links & devices
     try {
       const configDocRef = doc(db, 'system_config', 'google_sheets');
-      await setDoc(configDocRef, { webhookUrl: trimmed, updatedAt: new Date().toISOString() }, { merge: true });
+      const payload = { webhookUrl: trimmed, updatedAt: new Date().toISOString() };
+      await setDoc(configDocRef, payload, { merge: true });
+      DualWriteClient.syncSystemConfig('google_sheets', payload).catch(console.warn);
     } catch (e) {
       console.warn('Could not save webhookUrl to Firestore:', e);
     }
@@ -1981,7 +2253,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       const configDocRef = doc(db, 'system_config', 'google_sheets');
-      await setDoc(configDocRef, { autoSync: val, updatedAt: new Date().toISOString() }, { merge: true });
+      const payload = { autoSync: val, updatedAt: new Date().toISOString() };
+      await setDoc(configDocRef, payload, { merge: true });
+      DualWriteClient.syncSystemConfig('google_sheets', payload).catch(console.warn);
     } catch (e) {
       console.warn('Could not save autoSync to Firestore:', e);
     }
@@ -2164,6 +2438,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider
       value={{
+        dataBackend,
+        setDataBackend,
         activeTab,
         setActiveTab,
         openDrawer,

@@ -1,0 +1,21 @@
+name = "sale-paint-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "production"
+SCHEMA_VERSION = "v1"
+
+# Cloudflare R2 Bucket Binding for automated backups
+[[r2_buckets]]
+binding = "BACKUP_BUCKET"
+bucket_name = "sale-paint-backups"
+
+# Supabase Binding (Configured in Cloudflare Dashboard Secrets)
+# SUPABASE_URL = "https://your-project.supabase.co"
+# SUPABASE_SERVICE_ROLE_KEY = "ey..."
+
+# Optional Scheduled Cron Trigger for automated midnight backup
+[triggers]
+crons = ["0 17 * * *"] # 00:00 Bangkok Time (UTC 17:00)

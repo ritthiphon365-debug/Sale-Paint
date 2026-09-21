@@ -1,0 +1,244 @@
+{
+  "bills": [
+    [
+      "BILL-TEST-1789976989354",
+      {
+        "id": "BILL-TEST-1789976989354",
+        "bill_no": "BILL-TEST-1789976989354",
+        "date": "2026-09-21",
+        "customer_name": "คุณสมชาย ทดสอบระบบ",
+        "customer_phone": "0812345678",
+        "salesperson": "พนักงานขาย สาขา 1",
+        "salesperson_email": "somchai@nipponpaint.co.th",
+        "branch": "สาขาหลัก",
+        "total_amount": 3100,
+        "item_count": 2,
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.354Z",
+        "updated_at": "2026-09-21T07:49:49.355Z"
+      }
+    ],
+    [
+      "BILL-IDEMP-TEST",
+      {
+        "id": "BILL-IDEMP-TEST",
+        "bill_no": "BILL-IDEMP-TEST",
+        "date": "2026-09-21",
+        "customer_name": "ลูกค้าทดสอบความไม่ซ้ำ",
+        "customer_phone": null,
+        "salesperson": "พนักงานขาย",
+        "salesperson_email": null,
+        "branch": "สาขาหลัก",
+        "total_amount": 650,
+        "item_count": 1,
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.357Z",
+        "updated_at": "2026-09-21T07:49:49.357Z"
+      }
+    ],
+    [
+      "BILL-FAIL-1789976989358",
+      {
+        "id": "BILL-FAIL-1789976989358",
+        "bill_no": "BILL-FAIL-01",
+        "date": "2026-09-21",
+        "customer_name": null,
+        "customer_phone": null,
+        "salesperson": "พนักงานขาย",
+        "salesperson_email": null,
+        "branch": "สาขาหลัก",
+        "total_amount": 800,
+        "item_count": 1,
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.359Z",
+        "updated_at": "2026-09-21T07:49:49.359Z"
+      }
+    ],
+    [
+      "BILL-MUTATE-1",
+      {
+        "id": "BILL-MUTATE-1",
+        "bill_no": "BILL-MUTATE-1",
+        "date": "2026-09-21",
+        "customer_name": null,
+        "customer_phone": null,
+        "salesperson": "พนักงานขาย",
+        "salesperson_email": null,
+        "branch": "สาขาหลัก",
+        "total_amount": 500,
+        "item_count": 1,
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.361Z",
+        "updated_at": "2026-09-21T07:49:49.361Z"
+      }
+    ]
+  ],
+  "sales": [
+    [
+      "sale-test-item-1-1789976989355",
+      {
+        "id": "sale-test-item-1-1789976989355",
+        "bill_id": "BILL-TEST-1789976989354",
+        "date": "2026-09-21",
+        "product_id": "prod-nippon-matex-white",
+        "product_name": "สีน้ำอะครีลิก นิปปอนเพนต์ เมเท็กซ์ สีขาว",
+        "brand": "NIPPON PAINT",
+        "sku": "NP-MATEX-WHT-1G",
+        "size": "1G",
+        "base": "Base A",
+        "film_color": "Matt",
+        "color_code": "1001",
+        "price": 450,
+        "tint_price": 0,
+        "quantity": 2,
+        "total": 900,
+        "customer_name": "คุณสมชาย ทดสอบระบบ",
+        "customer_phone": "0812345678",
+        "salesperson": "พนักงานขาย สาขา 1",
+        "salesperson_email": "somchai@nipponpaint.co.th",
+        "branch": "สาขาหลัก",
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.354Z",
+        "updated_at": "2026-09-21T07:49:49.355Z"
+      }
+    ],
+    [
+      "sale-test-item-2-1789976989355",
+      {
+        "id": "sale-test-item-2-1789976989355",
+        "bill_id": "BILL-TEST-1789976989354",
+        "date": "2026-09-21",
+        "product_id": "prod-nippon-solareflect",
+        "product_name": "สีทาภายนอก นิปปอนเพนต์ โซลาร์รีเฟล็กซ์",
+        "brand": "NIPPON PAINT",
+        "sku": "NP-SOLAR-5G",
+        "size": "5G",
+        "base": "Base B",
+        "film_color": "Semi-Gloss",
+        "color_code": "9002",
+        "price": 2150,
+        "tint_price": 50,
+        "quantity": 1,
+        "total": 2200,
+        "customer_name": "คุณสมชาย ทดสอบระบบ",
+        "customer_phone": "0812345678",
+        "salesperson": "พนักงานขาย สาขา 1",
+        "salesperson_email": "somchai@nipponpaint.co.th",
+        "branch": "สาขาหลัก",
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.354Z",
+        "updated_at": "2026-09-21T07:49:49.355Z"
+      }
+    ],
+    [
+      "sale-idemp-1",
+      {
+        "id": "sale-idemp-1",
+        "bill_id": "BILL-IDEMP-TEST",
+        "date": "2026-09-21",
+        "product_name": "สีรองพื้นปูนเก่า",
+        "brand": "NIPPON PAINT",
+        "sku": "NP-PRIMER-1",
+        "base": null,
+        "film_color": null,
+        "color_code": null,
+        "price": 0,
+        "tint_price": 0,
+        "quantity": 1,
+        "total": 650,
+        "customer_name": "ลูกค้าทดสอบความไม่ซ้ำ",
+        "customer_phone": null,
+        "salesperson": "พนักงานขาย",
+        "salesperson_email": null,
+        "branch": "สาขาหลัก",
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.357Z",
+        "updated_at": "2026-09-21T07:49:49.357Z"
+      }
+    ],
+    [
+      "sale-fail-item-1",
+      {
+        "id": "sale-fail-item-1",
+        "bill_id": "BILL-FAIL-1789976989358",
+        "date": "2026-09-21",
+        "product_name": "สีรองพื้น",
+        "brand": "NIPPON PAINT",
+        "sku": "NP-FAIL-1",
+        "base": null,
+        "film_color": null,
+        "color_code": null,
+        "price": 0,
+        "tint_price": 0,
+        "quantity": 1,
+        "total": 800,
+        "customer_name": null,
+        "customer_phone": null,
+        "salesperson": "พนักงานขาย",
+        "salesperson_email": null,
+        "branch": "สาขาหลัก",
+        "sheet_synced": false,
+        "created_at": "2026-09-21T07:49:49.359Z",
+        "updated_at": "2026-09-21T07:49:49.359Z"
+      }
+    ]
+  ],
+  "products": [
+    [
+      "prod-drift-1789976989362",
+      {
+        "id": "prod-drift-1789976989362",
+        "sku": "NP-DRIFT-001",
+        "name": "สินค้าทดสอบ Reconciliation",
+        "brand": "NIPPON PAINT",
+        "category": "สีทาภายนอก",
+        "available_sizes": [
+          "1G",
+          "5G"
+        ],
+        "has_bases": false,
+        "available_bases": [],
+        "has_film_color": false,
+        "film_colors": [],
+        "has_color_code": false,
+        "base_prices": {},
+        "initial_stock": {},
+        "is_quick_pick": false,
+        "updated_at": "2026-09-21T07:49:49.363Z"
+      }
+    ]
+  ],
+  "catalog_items": [
+    [
+      "cat-drift-1789976989363",
+      {
+        "id": "cat-drift-1789976989363",
+        "sku": "NP-DRIFT-001",
+        "name": "สินค้าทดสอบ Reconciliation",
+        "film_color": null,
+        "size": "1G",
+        "base": null,
+        "color_code": null,
+        "price": 600,
+        "brand": null,
+        "category": null,
+        "updated_at": "2026-09-21T07:49:49.364Z"
+      }
+    ]
+  ],
+  "stock_ins": [],
+  "system_configs": [
+    [
+      "google_sheets",
+      {
+        "key": "google_sheets",
+        "value": {
+          "webhookUrl": "https://script.google.com/test",
+          "autoSync": true
+        },
+        "updated_at": "2026-09-21T07:49:49.364Z",
+        "updated_by": "system"
+      }
+    ]
+  ]
+}

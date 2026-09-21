@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-09-21T07:40:09.931Z",
+  "totalRecordsExamined": 34,
+  "totalAnomaliesFound": 0,
+  "hasBlockingErrors": false,
+  "summary": {
+    "salesChecked": 0,
+    "productsChecked": 8,
+    "catalogItemsChecked": 25,
+    "stockInsChecked": 0,
+    "systemConfigsChecked": 1
+  },
+  "details": {
+    "missingRequiredFields": [],
+    "duplicateIds": [],
+    "invalidDataTypes": [],
+    "invalidDates": [],
+    "referentialIntegrityWarnings": []
+  }
+}

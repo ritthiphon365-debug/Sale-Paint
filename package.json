@@ -10,10 +10,12 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:commission": "tsx scripts/test-commission.ts"
+    "test:commission": "tsx scripts/test-commission.ts",
+    "migrate:phase2": "tsx scripts/migration/run_phase2.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@supabase/supabase-js": "^2.116.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "canvas-confetti": "^1.9.4",

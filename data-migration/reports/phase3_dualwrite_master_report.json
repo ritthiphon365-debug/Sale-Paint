@@ -1,0 +1,156 @@
+{
+  "title": "SALE PAINT — PHASE 3 DUAL-WRITE & SYNCHRONIZATION MASTER REPORT",
+  "timestamp": "2026-09-21T07:49:49.365Z",
+  "environment": {
+    "primaryDatabase": "Firebase Firestore (Authoritative Source of Truth)",
+    "secondaryDatabase": "Supabase PostgreSQL",
+    "dualWriteMode": "Client Interceptor + Server Async Receiver + Durable Sync Queue",
+    "isLiveSupabaseConnected": false
+  },
+  "verificationSummary": {
+    "totalTests": 6,
+    "passed": 6,
+    "failed": 0,
+    "overallResult": "SUCCESS_PHASE_3_COMPLETE"
+  },
+  "queueTelemetry": {
+    "total": 1,
+    "pending": 0,
+    "processing": 0,
+    "completed": 1,
+    "failed": 0,
+    "deadLetter": 0
+  },
+  "dbRecordCounts": {
+    "bills": 4,
+    "sales": 4,
+    "products": 1,
+    "catalogItems": 1,
+    "stockIns": 0,
+    "systemConfigs": 1
+  },
+  "testCases": [
+    {
+      "testName": "Case B: Bill & Sales Dual-Write Success",
+      "category": "CASE_B",
+      "status": "PASSED",
+      "details": "Successfully dual-wrote bill BILL-TEST-1789976989354 with 2 sale items (Total ฿3,100).",
+      "metrics": {
+        "billId": "BILL-TEST-1789976989354",
+        "itemCount": 2,
+        "totalAmount": 3100
+      }
+    },
+    {
+      "testName": "Idempotency: Repeated writes do not duplicate records",
+      "category": "IDEMPOTENCY",
+      "status": "PASSED",
+      "details": "Re-submitting duplicate bill and sales did not increase row count.",
+      "metrics": {
+        "initialBillCount": 2,
+        "secondBillCount": 2
+      }
+    },
+    {
+      "testName": "Case C: Failure enqueued and replayed by background worker",
+      "category": "CASE_C",
+      "status": "PASSED",
+      "details": "Item successfully queued on simulated failure, then processed and marked COMPLETED.",
+      "metrics": {
+        "queueId": "queue-1789976989358-e2ggf",
+        "workerProcessed": 1,
+        "workerSucceeded": 1
+      }
+    },
+    {
+      "testName": "Case A: Primary Firestore failure halts secondary write (No ghost data)",
+      "category": "CASE_A",
+      "status": "PASSED",
+      "details": "When primary write fails, secondary write is never executed. Zero orphan records created.",
+      "metrics": {
+        "beforeCount": 3,
+        "afterCount": 3
+      }
+    },
+    {
+      "testName": "Mutations: Update & Delete propagated accurately",
+      "category": "MUTATIONS",
+      "status": "PASSED",
+      "details": "Sale was successfully created, updated with modified price, and deleted.",
+      "metrics": {
+        "saleId": "sale-mutate-1789976989361"
+      }
+    },
+    {
+      "testName": "Reconciliation: Detected drift and healed secondary database",
+      "category": "RECONCILIATION",
+      "status": "PASSED",
+      "details": "Detected 3 un-synced entities from Firestore and healed them into Supabase.",
+      "metrics": {
+        "timestamp": "2026-09-21T07:49:49.363Z",
+        "entityStats": {
+          "bills": {
+            "firestore": 0,
+            "supabase": 0,
+            "missingInSupabase": 0,
+            "synced": 0
+          },
+          "sales": {
+            "firestore": 0,
+            "supabase": 4,
+            "missingInSupabase": 0,
+            "synced": 0
+          },
+          "products": {
+            "firestore": 1,
+            "supabase": 0,
+            "missingInSupabase": 1,
+            "synced": 1
+          },
+          "catalogItems": {
+            "firestore": 1,
+            "supabase": 0,
+            "missingInSupabase": 1,
+            "synced": 1
+          },
+          "stockIns": {
+            "firestore": 0,
+            "supabase": 0,
+            "missingInSupabase": 0,
+            "synced": 0
+          },
+          "systemConfigs": {
+            "firestore": 1,
+            "supabase": 0,
+            "missingInSupabase": 1,
+            "synced": 1
+          }
+        },
+        "discrepancies": [
+          {
+            "entity": "products",
+            "id": "prod-drift-1789976989362",
+            "issue": "MISSING_IN_SUPABASE",
+            "details": "Product \"สินค้าทดสอบ Reconciliation\" (NP-DRIFT-001) found in Firestore but missing in Supabase.",
+            "resolved": true
+          },
+          {
+            "entity": "catalog_items",
+            "id": "cat-drift-1789976989363",
+            "issue": "MISSING_IN_SUPABASE",
+            "details": "Catalog item \"สินค้าทดสอบ Reconciliation\" (NP-DRIFT-001) missing in Supabase.",
+            "resolved": true
+          },
+          {
+            "entity": "system_configs",
+            "id": "google_sheets",
+            "issue": "MISSING_IN_SUPABASE",
+            "details": "System config \"google_sheets\" missing in Supabase.",
+            "resolved": true
+          }
+        ],
+        "overallStatus": "HEALED"
+      }
+    }
+  ]
+}

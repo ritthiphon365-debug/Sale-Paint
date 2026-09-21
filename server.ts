@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { dualWriteSyncService } from './server/dualWriteSyncService';
+import { gatewayRouter } from './server/gatewayRouter';
 
 async function startServer() {
   const app = express();
@@ -11,6 +13,9 @@ async function startServer() {
   // Support larger payload sizes for store snapshot and sales sync
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // Mount Phase 4 Cloudflare Worker / Supabase API Gateway Router
+  app.use('/api/v1', gatewayRouter);
 
   // Snapshot file path for local persistence of the latest store state
   const SNAPSHOT_FILE = path.join(process.cwd(), '.store-snapshot.json');
@@ -74,6 +79,90 @@ async function startServer() {
       timestamp: new Date().toISOString(),
     });
   });
+
+  // ==============================================================================
+  // SALE PAINT — PHASE 3: DUAL-WRITE SYNCHRONIZATION API ENDPOINTS
+  // Primary: Firebase Firestore | Secondary: Supabase PostgreSQL
+  // ==============================================================================
+
+  // 1. Dual-Write Receiver: Executes secondary write or enqueues if failed
+  app.post('/api/sync/dual-write', async (req, res) => {
+    try {
+      const { operation, idempotencyKey, payload } = req.body;
+      if (!operation || !idempotencyKey) {
+        return res.status(400).json({ error: 'Missing required parameters (operation, idempotencyKey)' });
+      }
+
+      const result = await dualWriteSyncService.executeDualWrite(operation, idempotencyKey, payload);
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[API /api/sync/dual-write] Internal error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 2. Dual-Write Health & Queue Status
+  app.get('/api/sync/status', (req, res) => {
+    const queueStats = dualWriteSyncService.getQueueStats();
+    res.json({
+      status: 'ok',
+      architecture: 'PHASE 3 DUAL-WRITE',
+      primary: 'Firebase Firestore',
+      secondary: 'Supabase PostgreSQL',
+      isLiveSupabaseConnected: dualWriteSyncService.isLiveConnected(),
+      queueStats,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // 3. Inspect synchronization queue items
+  app.get('/api/sync/queue', (req, res) => {
+    const status = req.query.status as any;
+    const items = dualWriteSyncService.getQueueItems(status);
+    res.json({
+      success: true,
+      count: items.length,
+      items,
+    });
+  });
+
+  // 4. Manually trigger processing of the sync queue
+  app.post('/api/sync/queue/process', async (req, res) => {
+    try {
+      const result = await dualWriteSyncService.processSyncQueue();
+      res.json({
+        success: true,
+        summary: result,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 5. Reconcile Firestore source data with Supabase secondary data
+  app.post('/api/sync/reconcile', async (req, res) => {
+    try {
+      const { firestoreData } = req.body;
+      if (!firestoreData || typeof firestoreData !== 'object') {
+        return res.status(400).json({ error: 'Missing firestoreData snapshot payload' });
+      }
+
+      const report = await dualWriteSyncService.reconcile(firestoreData);
+      res.json({
+        success: true,
+        report,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Background queue processing interval: runs every 60 seconds
+  setInterval(() => {
+    dualWriteSyncService.processSyncQueue().catch((err) => {
+      console.warn('[Background Queue Worker] Error:', err);
+    });
+  }, 60000);
 
   // 1. Sync live store snapshot from the store's computer to server
   app.post('/api/store/snapshot', (req, res) => {
