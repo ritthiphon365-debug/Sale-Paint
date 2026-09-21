@@ -3,15 +3,13 @@ import {
   X,
   Target,
   Save,
-  Users,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const TargetModal: React.FC = () => {
-  const { modalOpen, setModalOpen, commissionConfig, updateCommissionConfig, showToast } = useApp();
+  const { modalOpen, setModalOpen, commissionConfig, updateCommissionConfig } = useApp();
   const [monthlyTarget, setMonthlyTarget] = useState(commissionConfig.monthlyTarget);
   const [headcount, setHeadcount] = useState(commissionConfig.headcount);
-  const [rewardPerHead, setRewardPerHead] = useState(commissionConfig.rewardPerHead);
 
   if (modalOpen !== 'target-manage') return null;
 
@@ -21,7 +19,6 @@ export const TargetModal: React.FC = () => {
       ...commissionConfig,
       monthlyTarget,
       headcount,
-      rewardPerHead,
     });
     setModalOpen(null);
   };
@@ -60,33 +57,18 @@ export const TargetModal: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">
-                จำนวนพนักงานขาย (คน)
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={headcount}
-                onChange={(e) => setHeadcount(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                required
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">
-                รางวัลต่อคน (฿/หัว)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={rewardPerHead}
-                onChange={(e) => setRewardPerHead(Number(e.target.value) || 0)}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                required
-              />
-            </div>
+          <div>
+            <label className="font-semibold text-slate-700 block mb-1">
+              จำนวนพนักงานขาย (คน)
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={headcount}
+              onChange={(e) => setHeadcount(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+              required
+            />
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl space-y-1 text-[11px] text-slate-500">
@@ -94,12 +76,6 @@ export const TargetModal: React.FC = () => {
               <span>เป้าเฉลี่ยต่อพนักงาน:</span>
               <span className="font-bold text-slate-800">
                 ฿{headcount > 0 ? Math.round(monthlyTarget / headcount).toLocaleString() : 0} / คน
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>งบรางวัล Per Head:</span>
-              <span className="font-bold text-slate-800">
-                ฿{(headcount * rewardPerHead).toLocaleString()}
               </span>
             </div>
           </div>
