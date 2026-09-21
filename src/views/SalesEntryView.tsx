@@ -14,6 +14,7 @@ import {
   FileCheck,
   AlertCircle,
   X,
+  Info,
   ChevronRight,
   Zap,
   Clock,
@@ -24,6 +25,7 @@ import {
   FileSpreadsheet,
   ExternalLink,
   RefreshCw,
+  Eye,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { SizeOption, BaseOption, CartItem, ProductConfig, SaleItem } from '../types';
@@ -49,6 +51,7 @@ export const SalesEntryView: React.FC = () => {
     unsyncedSaleCount,
     syncWithGoogle,
     syncStatus,
+    openSpreadsheetViewer,
   } = useApp();
 
   // Search
@@ -124,6 +127,13 @@ export const SalesEntryView: React.FC = () => {
   const [customerName, setCustomerName] = useState<string>('ลูกค้าทั่วไป (Walk-in)');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [isMobileCartOpen, setIsMobileCartOpen] = useState<boolean>(false);
+  const [lastSavedBillInfo, setLastSavedBillInfo] = useState<{
+    billId: string;
+    customer: string;
+    amount: number;
+    itemCount: number;
+    time: string;
+  } | null>(null);
 
   // Auto initialize attributes when active group changes
   useEffect(() => {
@@ -231,8 +241,20 @@ export const SalesEntryView: React.FC = () => {
   const handleSaveBill = () => {
     if (cart.length === 0) return;
     const finalCust = customerName.trim() || 'ลูกค้าทั่วไป (Walk-in)';
-    saveBill(finalCust, customerPhone.trim() || undefined);
+    const totalAmt = cartTotalAmount;
+    const totalCount = cartTotalQty;
+    const billId = saveBill(finalCust, customerPhone.trim() || undefined);
     setIsMobileCartOpen(false);
+
+    if (billId) {
+      setLastSavedBillInfo({
+        billId,
+        customer: finalCust,
+        amount: totalAmt,
+        itemCount: totalCount,
+        time: new Date().toLocaleTimeString('th-TH'),
+      });
+    }
   };
 
   // Recent Sales & Today's Summary
@@ -310,7 +332,10 @@ export const SalesEntryView: React.FC = () => {
           {googleWebhookUrl || spreadsheetId ? (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="font-semibold text-emerald-800">
-                {autoSyncSheets ? 'ซิงค์กับ Google Sheet อัตโนมัติ: เปิดอยู่' : 'เชื่อมต่อ Google Sheet แล้ว (ซิงค์ด้วยตนเอง)'}
+                {autoSyncSheets ? 'ซิงค์อัตโนมัติ: เปิดอยู่' : 'เชื่อมต่อ Google Sheet แล้ว'}
+              </span>
+              <span className="text-[11px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded font-mono font-medium">
+                แท็บ: Sales_Transactions
               </span>
               {unsyncedSaleCount > 0 ? (
                 <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold text-[10px]">
@@ -318,7 +343,7 @@ export const SalesEntryView: React.FC = () => {
                 </span>
               ) : (
                 <span className="px-2 py-0.5 bg-emerald-200/70 text-emerald-800 rounded-full font-bold text-[10px]">
-                  ส่งยอดแล้วทุกบิล
+                  ส่งยอดครบแล้ว
                 </span>
               )}
             </div>
@@ -331,11 +356,22 @@ export const SalesEntryView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
+          {spreadsheetId && (
+            <button
+              onClick={openSpreadsheetViewer}
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-[11px] flex items-center gap-1 transition-colors shadow-xs"
+              title="เปิดดู Google Sheet ในแอป"
+            >
+              <Eye className="w-3 h-3" />
+              <span>เปิดดูชีต</span>
+            </button>
+          )}
+
           {unsyncedSaleCount > 0 && (googleWebhookUrl || spreadsheetId) && (
             <button
               onClick={() => syncWithGoogle()}
               disabled={syncStatus === 'syncing'}
-              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-[11px] flex items-center gap-1 transition-colors disabled:opacity-50"
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[11px] flex items-center gap-1 transition-colors disabled:opacity-50 shadow-xs"
             >
               <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
               <span>{syncStatus === 'syncing' ? 'กำลังส่ง...' : `ส่งยอดคงค้าง (${unsyncedSaleCount})`}</span>
@@ -366,6 +402,69 @@ export const SalesEntryView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Last Saved Bill Alert & Tab Guidance Notice */}
+      {lastSavedBillInfo && (
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-4 shadow-md border border-emerald-500/30 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-bold">
+                  ลงยอดขายสำเร็จแล้ว
+                </span>
+                <span className="text-xs text-emerald-100">{lastSavedBillInfo.time}</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold">
+                บิล {lastSavedBillInfo.billId} • ฿{lastSavedBillInfo.amount.toLocaleString()} ({lastSavedBillInfo.customer})
+              </h3>
+              <p className="text-xs text-emerald-100 flex flex-wrap items-center gap-1.5 pt-0.5">
+                <Info className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span>
+                  <strong>จุดสังเกตใน Google Sheet:</strong> รายการขายนี้บันทึกอยู่ที่แท็บด้านล่างชื่อ <span className="underline font-extrabold bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded">Sales_Transactions</span> (ไม่ใช่ Sheet1 หรือแผ่นงาน 1)
+                </span>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                onClick={openSpreadsheetViewer}
+                className="px-3 py-1.5 bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all"
+              >
+                <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                <span>เปิดดูชีตในแอป</span>
+              </button>
+              {spreadsheetUrl && (
+                <a
+                  href={spreadsheetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-emerald-800/80 hover:bg-emerald-800 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 border border-emerald-400/40 transition-all"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>เปิด Google Sheet</span>
+                </a>
+              )}
+              {unsyncedSaleCount > 0 && (
+                <button
+                  onClick={() => syncWithGoogle()}
+                  disabled={syncStatus === 'syncing'}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                  <span>ส่งยอดทันที</span>
+                </button>
+              )}
+              <button
+                onClick={() => setLastSavedBillInfo(null)}
+                className="p-1.5 text-emerald-200 hover:text-white rounded-lg transition-colors ml-1"
+                title="ปิดการแจ้งเตือน"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header & Quick Customer Switcher */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-100 shadow-sm">

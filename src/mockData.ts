@@ -277,6 +277,8 @@ export const INITIAL_COMMISSION_CONFIG: CommissionConfig = {
     { id: 'sb-3', minSales: 600001, maxSales: 1000000, rewardAmount: 10000 },
   ],
   rewardPerHead: 1500,
+  requireTargetAchievementForGallon: true,
+  minTargetAchievementForGallon: 80, // ต้องทำยอดรวมให้ถึง 80% ของเป้าถึงจะได้รับเงินรายแกนลอน
 };
 
 export const INITIAL_GALLON_RULES: GallonIncentiveRule[] = [
@@ -289,7 +291,7 @@ export const INITIAL_GALLON_RULES: GallonIncentiveRule[] = [
     selectedBases: ['A'],
     reward: 50,
     enabled: true,
-    notes: 'จ่ายรายถังทันทีที่มียอดขาย',
+    notes: 'ใช้เกณฑ์รวมระบบ (ต้องได้ยอดขายรวม ≥80% ของเป้า)',
   },
   {
     id: 'gr-wb-bundle-4',
@@ -300,8 +302,9 @@ export const INITIAL_GALLON_RULES: GallonIncentiveRule[] = [
     selectedBases: ['A', 'B'],
     minQuantity: 4,
     reward: 200,
+    minTargetAchievementPercent: 85, // เงื่อนไขเฉพาะ: ต้องทำยอดรวมได้ 85% ของเป้า
     enabled: true,
-    notes: 'ขายรวมครบทุกๆ 4 ถัง จ่ายเงินพิเศษ 200 บาท',
+    notes: 'ขายรวมครบทุกๆ 4 ถัง จ่ายเงินพิเศษ 200 บาท (ต้องได้ยอดรวม ≥85% ของเป้า)',
   },
   {
     id: 'gr-hybrid-ceiling-rev',
@@ -312,18 +315,20 @@ export const INITIAL_GALLON_RULES: GallonIncentiveRule[] = [
     selectedColorCodes: ['E777 ขาวสว่างสำหรับฝ้า', 'E888 เทาควันบุหรี่'],
     minRevenue: 200000,
     reward: 50,
+    minTargetAchievementPercent: 90, // ต้องได้ยอดรวม 90% ของเป้า
     enabled: true,
-    notes: 'เมื่อยอดขายรวมของสีทาฝ้าถึง 200,000 บาท จ่ายโบนัสถังละ 50 บาท',
+    notes: 'เมื่อยอดขายรวมของสีทาฝ้าถึง 200,000 บาท จ่ายโบนัสถังละ 50 บาท (ต้องได้ยอดรวม ≥90% ของเป้า)',
   },
   {
     id: 'gr-wb-max',
-    name: 'WEATHERBOND MAX ถังใหญ่ 5GL โบนัสถังละ 80 บาท',
+    name: 'WEATHERBOND MAX ถังใหญ่ 5GL โบนัสถังละ 80 บาท (จ่ายทันที)',
     ruleType: 'per_unit',
     productName: 'WEATHERBOND MAX',
     selectedSizes: ['5GL'],
     reward: 80,
+    minTargetAchievementPercent: 0, // 0 = จ่ายทันที ไม่มีเงื่อนไขยอดรวม
     enabled: true,
-    notes: 'สีอัลตร้าพรีเมียม จ่ายพิเศษทันที',
+    notes: 'สีอัลตร้าพรีเมียม จ่ายพิเศษทันทีไม่มีเงื่อนไขยอดรวม',
   },
 ];
 

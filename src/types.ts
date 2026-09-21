@@ -155,8 +155,10 @@ export interface CommissionConfig {
   monthlyTarget: number;
   headcount: number;
   tiers: CommissionTier[];
-  specialBands: SpecialCommissionBand[];
-  rewardPerHead: number; // For headcount calculation
+  specialBands?: SpecialCommissionBand[];
+  rewardPerHead?: number; // For headcount calculation
+  requireTargetAchievementForGallon?: boolean; // บังคับเงื่อนไขต้องถึง % ยอดขายรวมก่อนถึงจะได้รับเงินรายแกนลอน
+  minTargetAchievementForGallon?: number; // กำหนด % ขั้นต่ำของเป้าหมาย เช่น 80% หรือ 100%
 }
 
 export type GallonRuleType =
@@ -187,6 +189,7 @@ export interface GallonIncentiveRule {
   bundleSize?: number;
   enabled: boolean;
   notes?: string;
+  minTargetAchievementPercent?: number; // เงื่อนไขยอดขายรวมขั้นต่ำเฉพาะกฎนี้ (% ของเป้า เช่น 80) ถ้าไม่ระบุจะใช้ตามเกณฑ์ของระบบ
 }
 
 export interface BrandSettings {
@@ -223,4 +226,20 @@ export interface MonthTargetData {
   year: number;
   target: number;
   brandTargets?: Record<string, number>;
+}
+
+export interface DriveSpreadsheetItem {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+}
+
+export interface CloudSpreadsheetInfo {
+  spreadsheetId: string;
+  spreadsheetName?: string;
+  spreadsheetUrl?: string;
+  lastSyncTime?: string;
+  updatedAt?: string;
+  ownerEmail?: string;
 }

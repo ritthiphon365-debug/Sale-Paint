@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Sparkles,
   Layers,
+  MessageCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -33,7 +34,8 @@ export const MobileDrawer: React.FC = () => {
     userSession,
     isOnline,
     setModalOpen,
-    loginWithGoogle,
+    openSpreadsheet,
+    openSpreadsheetViewer,
     logout,
   } = useApp();
 
@@ -56,8 +58,9 @@ export const MobileDrawer: React.FC = () => {
       ],
     },
     {
-      title: 'เครื่องมือและระบบงานขาย',
+      title: 'LINE บอท และเครื่องมือช่วยขาย',
       items: [
+        { id: 'ai-assistant', th: 'น้องบอท', en: 'Sales Bot (Nong Bot)', icon: MessageCircle, modal: 'ai-assistant' },
         { id: 'order-gen', th: 'สร้างใบสั่งสินค้า Line', en: 'Order Generator', icon: FileText, modal: 'order-gen' },
         { id: 'daily-brief', th: 'สรุปการขายประจำวัน', en: 'Daily Brief Summary', icon: TrendingUp, modal: 'daily-brief' },
         { id: 'weekly-review', th: 'รีวิวรายสัปดาห์', en: 'Weekly Review', icon: Sparkles, modal: 'weekly-review' },
@@ -123,25 +126,39 @@ export const MobileDrawer: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="space-y-1.5 pt-1">
             <button
               onClick={() => {
-                loginWithGoogle();
+                setModalOpen('ai-assistant');
+                setOpenDrawer(false);
               }}
-              className="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors border border-slate-700/60"
+              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
             >
-              <LogIn className="w-3.5 h-3.5 text-amber-400" />
-              <span>สลับ / ล็อกอิน Google</span>
+              <MessageCircle className="w-3.5 h-3.5 text-white fill-white" />
+              <span>น้องบอท</span>
             </button>
-            {userSession.email && (
+
+            <div className="grid grid-cols-2 gap-1.5">
               <button
-                onClick={() => logout()}
-                className="p-1.5 rounded-xl bg-slate-800/60 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition-colors"
-                title="ออกจากระบบ"
+                onClick={() => {
+                  openSpreadsheetViewer();
+                  setOpenDrawer(false);
+                }}
+                className="py-1.5 px-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-[11px] font-medium flex items-center justify-center gap-1 transition-colors border border-emerald-800/60"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <Sheet className="w-3.5 h-3.5 text-emerald-400" />
+                <span>เปิดดูในแอป</span>
               </button>
-            )}
+              <button
+                onClick={() => {
+                  openSpreadsheet();
+                  setOpenDrawer(false);
+                }}
+                className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium flex items-center justify-center gap-1 transition-colors border border-slate-700/60"
+              >
+                <span>เปิดแท็บใหม่</span>
+              </button>
+            </div>
           </div>
         </div>
 

@@ -14,6 +14,8 @@ import {
   UserSession,
   CartItem,
   CatalogItem,
+  DriveSpreadsheetItem,
+  CloudSpreadsheetInfo,
 } from '../types';
 import {
   StorageKeys,
@@ -158,8 +160,9 @@ interface AppContextType {
   connectGoogle: () => void;
   disconnectGoogle: () => void;
   spreadsheetId: string;
+  spreadsheetName: string;
   spreadsheetUrl: string;
-  setSpreadsheetId: (id: string) => void;
+  setSpreadsheetId: (id: string, name?: string) => void;
   googleWebhookUrl: string;
   setGoogleWebhookUrl: (url: string) => void;
   autoSyncSheets: boolean;
@@ -172,10 +175,34 @@ interface AppContextType {
   lastSyncTime: string | null;
   exportSalesToCsv: () => void;
   copySalesToClipboard: () => Promise<void>;
+  syncAllTabsToGoogle: () => Promise<void>;
+  exportAllTabsToExcel: () => void;
+  openSpreadsheet: () => void;
+
+  // Multi-Device & Google Drive Integration
+  isGoogleOAuthConnected: boolean;
+  connectGoogleOAuth: () => Promise<void>;
+  disconnectGoogleOAuth: () => void;
+  driveSpreadsheets: DriveSpreadsheetItem[];
+  isLoadingDriveFiles: boolean;
+  loadDriveSpreadsheets: (overrideToken?: string) => Promise<void>;
+  cloudSpreadsheetInfo: CloudSpreadsheetInfo | null;
+  selectSpreadsheet: (id: string, name?: string) => Promise<void>;
+  createNewCloudSpreadsheet: (title?: string) => Promise<void>;
+  pullSalesFromGoogleSheet: () => Promise<number>;
+  openSpreadsheetViewer: () => void;
+  closeSpreadsheetViewer: () => void;
 
   // Quick action modals
   modalOpen: string | null;
   setModalOpen: (name: string | null) => void;
+
+  // Active Sales Month (Multi-month Support)
+  activeMonth: string;
+  setActiveMonth: (monthStr: string) => void;
+  availableMonths: string[];
+  allTimeSalesTotal: number;
+  allTimeSalesCount: number;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -382,59 +409,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const loginWithGoogle = async () => {
-    try {
-      // Firebase's Google provider is configured with prompt=select_account,
-      // so every explicit login/switch-account action opens Google's chooser.
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      const session: UserSession = {
-        uid: user.uid,
-        name: user.displayName || user.email?.split('@')[0] || 'ผู้ใช้งาน Google',
-        email: user.email || '',
-        avatar: user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        isOnline: true,
-      };
-      setUserSession(session);
-      setStoredData(StorageKeys.USER_SESSION, session);
-      addAuditLog('Settings Change', `เข้าสู่ระบบด้วยบัญชี Google (${user.email}) สำเร็จ`, 'success');
-      showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับคุณ ${session.name}`, 'success');
-    } catch (err: any) {
-      console.warn('Google sign-in error:', err);
-
-      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        showToast('ยกเลิกการเข้าสู่ระบบ Google แล้ว', 'info');
-        return;
-      }
-
-      if (err?.code === 'auth/unauthorized-domain') {
-        // Silently ensure anonymous session so Firestore requests never fail
-        if (!auth.currentUser) {
-          signInAnonymously(auth).catch(() => {});
-        }
-        showToast('ตรวจพบการใช้งานบนลิงก์จริง (ระบบเปิดตัวช่วยล็อกอินพนักงาน PC ให้ทันที)', 'info');
-        setModalOpen('google-auth');
-        return;
-      }
-
-      if (err?.code === 'auth/popup-blocked') {
-        const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
-        if (!isInsideIframe) {
-          try {
-            showToast('กำลังเปลี่ยนเส้นทางไปหน้า Google เพื่อเลือกบัญชี...', 'info');
-            await signInWithRedirect(auth, googleProvider);
-            return;
-          } catch (redirectErr: any) {
-            console.error('Google redirect sign-in error:', redirectErr);
-          }
-        }
-        showToast('เบราว์เซอร์บล็อกหน้าต่าง Popup กำลังเปิดตัวช่วย...', 'info');
-        setModalOpen('google-auth');
-        return;
-      }
-
-      showToast(`เข้าสู่ระบบ Google ขัดข้อง (${err?.code || 'Error'}) กำลังเปิดตัวช่วย...`, 'error');
-      setModalOpen('google-auth');
-    }
+    setActiveTab('settings');
+    showToast('ระบบปรับเป็นแบบกำหนดชื่อพนักงาน PC โดยตรง ไม่ต้องล็อกอิน Google ให้ยุ่งยากแล้ว', 'info');
   };
 
   const logout = async () => {
@@ -875,12 +851,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('ลบกฎเรียบร้อย', 'info');
   };
 
-  // Computed Commission for current month (September 2026 or dynamic)
-  const computedCommission = useMemo(() => {
-    const now = new Date();
-    return computeCommission(sales, now.getMonth() + 1, now.getFullYear(), commissionConfig, gallonRules);
-  }, [sales, commissionConfig, gallonRules]);
-
   // Year Targets
   const [yearTargets, setYearTargets] = useState<MonthTargetData[]>(() => {
     return getStoredData<MonthTargetData[]>(StorageKeys.TARGETS, INITIAL_YEAR_TARGETS);
@@ -930,6 +900,71 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
+  // Available sales months discovered from actual sales data + calendar current
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set<string>();
+    sales.forEach((s) => {
+      const d = s.date || s.createdAt;
+      if (d && d.length >= 7) {
+        monthSet.add(d.slice(0, 7));
+      }
+    });
+    const now = new Date();
+    const currentPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    monthSet.add(currentPrefix);
+    return Array.from(monthSet).sort().reverse();
+  }, [sales]);
+
+  // Default active month:
+  // If current calendar month has sales, use current.
+  // Otherwise, default to the latest month that HAS recorded sales (e.g. 2026-03).
+  const defaultActiveMonth = useMemo(() => {
+    const now = new Date();
+    const currentPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const hasCurrentSales = sales.some((s) => (s.date ? s.date.startsWith(currentPrefix) : s.createdAt?.startsWith(currentPrefix)));
+    if (hasCurrentSales) return currentPrefix;
+
+    const monthsWithSales = availableMonths.filter((m) =>
+      sales.some((s) => (s.date ? s.date.startsWith(m) : s.createdAt?.startsWith(m)))
+    );
+    return monthsWithSales[0] || currentPrefix;
+  }, [availableMonths, sales]);
+
+  const [activeMonthState, setActiveMonthState] = useState<string>(() => {
+    return getStoredData<string>('ACTIVE_SALES_MONTH', '') || '';
+  });
+
+  const activeMonth = activeMonthState && availableMonths.includes(activeMonthState)
+    ? activeMonthState
+    : defaultActiveMonth;
+
+  const setActiveMonth = (monthStr: string) => {
+    setActiveMonthState(monthStr);
+    setStoredData('ACTIVE_SALES_MONTH', monthStr);
+  };
+
+  // Computed Commission for active month (e.g. March 2026 or selected month)
+  const computedCommission = useMemo(() => {
+    const [yearStr, monthStr] = activeMonth.split('-');
+    const now = new Date();
+    const y = Number(yearStr) || now.getFullYear();
+    const m = Number(monthStr) || (now.getMonth() + 1);
+
+    const targetObj = yearTargets.find((t) => t.month === m && t.year === y);
+    const target = targetObj ? targetObj.target : (commissionConfig.monthlyTarget || 500000);
+    const configWithTarget = { ...commissionConfig, monthlyTarget: target };
+    return computeCommission(sales, m, y, configWithTarget, gallonRules);
+  }, [sales, activeMonth, commissionConfig, yearTargets, gallonRules]);
+
+  // All-time sales aggregates across the entire database
+  const allTimeSalesTotal = useMemo(() => {
+    return sales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+  }, [sales]);
+
+  const allTimeSalesCount = useMemo(() => {
+    return new Set(sales.map((s) => s.billId || s.id)).size;
+  }, [sales]);
+
   // Brand Settings
   const [brandSettings, setBrandSettings] = useState<BrandSettings>(() => {
     return getStoredData<BrandSettings>(StorageKeys.BRAND_SETTINGS, INITIAL_BRAND_SETTINGS);
@@ -941,6 +976,125 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addAuditLog('Settings Change', 'แก้ไขข้อมูลแบรนด์และการตั้งค่าสาขา', 'info');
     showToast('บันทึกข้อมูลสาขาเรียบร้อย', 'success');
   };
+
+  // Auto-sync live store snapshot to server so LINE Bot can answer queries when PC is at home
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        // Precompute monthly summary for all recorded months
+        const monthlySummary: Record<string, { total: number; billCount: number; quantity: number }> = {};
+        sales.forEach((s) => {
+          const m = (s.date || s.createdAt || '').slice(0, 7);
+          if (m) {
+            if (!monthlySummary[m]) {
+              monthlySummary[m] = { total: 0, billCount: 0, quantity: 0 };
+            }
+            monthlySummary[m].total += Number(s.total) || 0;
+            monthlySummary[m].quantity += Number(s.quantity) || 0;
+          }
+        });
+        Object.keys(monthlySummary).forEach((m) => {
+          const bills = new Set(sales.filter((s) => (s.date || s.createdAt || '').startsWith(m)).map((s) => s.billId || s.id));
+          monthlySummary[m].billCount = bills.size;
+        });
+
+        // Sort sales descending by date to guarantee recent records are preserved
+        const sortedSales = [...sales].sort((a, b) => {
+          const dateA = a.date || a.createdAt || '';
+          const dateB = b.date || b.createdAt || '';
+          return dateB.localeCompare(dateA);
+        });
+        const latestSale = sortedSales[0] || null;
+
+        const now = new Date();
+        const bkkDate = new Date(now.getTime() + 7 * 3600000);
+        const todayStr = bkkDate.toISOString().slice(0, 10);
+        const todaySales = sales.filter((s) => (s.date ? s.date === todayStr : s.createdAt?.startsWith(todayStr)));
+        const todayTotal = todaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+        const todayBillCount = new Set(todaySales.map((s) => s.billId || s.id)).size;
+
+        const commissionDetails = {
+          grandTotalCommission: computedCommission.grandTotalCommission || 0,
+          mainCommission: computedCommission.mainCommission || 0,
+          activeTierPercent: computedCommission.activeTierPercent || 0,
+          nextTier: computedCommission.nextTier || null,
+          specialCommission: computedCommission.specialCommission || 0,
+          perHeadCommission: computedCommission.perHeadCommission || 0,
+          gallonIncentiveTotal: computedCommission.gallonIncentiveTotal || 0,
+          gallonIncentivePotentialTotal: computedCommission.gallonIncentivePotentialTotal || 0,
+          isGallonTargetUnlocked: computedCommission.isGallonTargetUnlocked,
+          globalTargetPercent: computedCommission.globalTargetPercent,
+          gapToGallonUnlock: computedCommission.gapToGallonUnlock,
+          ruleBreakdowns: (computedCommission.ruleBreakdowns || []).slice(0, 8).map((r) => ({
+            ruleName: r.ruleName,
+            productName: r.productName,
+            rewardRate: r.rewardRate,
+            matchedQuantity: r.matchedQuantity,
+            earnedAmount: r.earnedAmount,
+            potentialAmount: r.potentialAmount,
+            isQualified: r.isQualified,
+            targetGateMessage: r.targetGateMessage,
+          })),
+        };
+
+        const payload = {
+          pcName: userSession.name,
+          brand: brandSettings.brandName,
+          branch: brandSettings.branch,
+          sales: sortedSales.slice(0, 1500).map((s) => ({
+            id: s.id,
+            billId: s.billId,
+            date: s.date,
+            createdAt: s.createdAt,
+            total: s.total,
+            productName: s.productName,
+            sku: s.sku,
+            size: s.size,
+            quantity: s.quantity,
+          })),
+          allTimeTotal: allTimeSalesTotal,
+          allTimeBillCount: allTimeSalesCount,
+          monthlySummary,
+          activeMonth,
+          activeMonthTotal: computedCommission.totalSalesAmount,
+          target: computedCommission.target,
+          progressPercent: Number(computedCommission.achievementPercent.toFixed(1)),
+          remainingToTarget: Math.max(0, computedCommission.target - computedCommission.totalSalesAmount),
+          latestSale: latestSale
+            ? {
+                date: latestSale.date,
+                productName: latestSale.productName,
+                total: latestSale.total,
+                billId: latestSale.billId,
+                quantity: latestSale.quantity,
+              }
+            : null,
+          todayTotal,
+          todayBillCount,
+          todaySales: todaySales.map((s) => ({
+            productName: s.productName,
+            quantity: s.quantity,
+            total: s.total,
+          })),
+          netCommission: computedCommission.grandTotalCommission || 0,
+          commissionDetails,
+        };
+
+        fetch('/api/store/snapshot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).catch(() => {
+          // offline or background sync silent fallback
+        });
+      } catch (err) {
+        // ignore
+      }
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [sales, activeMonth, computedCommission, userSession.name, brandSettings, allTimeSalesTotal, allTimeSalesCount]);
+
 
   // Market Share
   const [marketShareDaily, setMarketShareDaily] = useState<MarketShareRecord[]>(() => {
@@ -1169,6 +1323,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [spreadsheetId, setSpreadsheetIdState] = useState<string>(() => {
     return getStoredData<string>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, '');
   });
+  const [spreadsheetName, setSpreadsheetNameState] = useState<string>(() => {
+    return getStoredData<string>('nippon_google_sheet_name', 'Google Spreadsheet');
+  });
   const [googleWebhookUrl, setGoogleWebhookUrlState] = useState<string>(() => {
     return getStoredData<string>(StorageKeys.GOOGLE_WEBHOOK_URL, '');
   });
@@ -1183,6 +1340,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
     return getStoredData<string | null>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, null);
   });
+
+  // Multi-Device & Google Drive state
+  const [isGoogleOAuthConnected, setIsGoogleOAuthConnected] = useState<boolean>(() => {
+    return GoogleSheetsService.isTokenValid();
+  });
+  const [driveSpreadsheets, setDriveSpreadsheets] = useState<DriveSpreadsheetItem[]>([]);
+  const [isLoadingDriveFiles, setIsLoadingDriveFiles] = useState<boolean>(false);
+  const [cloudSpreadsheetInfo, setCloudSpreadsheetInfo] = useState<CloudSpreadsheetInfo | null>(null);
+
+  // Periodic check for token validity
+  useEffect(() => {
+    const checkToken = () => {
+      setIsGoogleOAuthConnected(GoogleSheetsService.isTokenValid());
+    };
+    checkToken();
+    const interval = setInterval(checkToken, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   // 1. Check URL parameters for instant configuration (e.g. ?webhook=...&sheetId=...)
   useEffect(() => {
@@ -1213,7 +1388,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   // 2. Real-time Cloud Sync with Firestore for Google Sheets settings
-  // Ensures shared link, mobile, and dev preview all share the same Google Sheets connection seamlessly
+  // Ensures shared link, mobile, and secondary machines all share the same Google Sheets connection seamlessly
   useEffect(() => {
     const configDocRef = doc(db, 'system_config', 'google_sheets');
 
@@ -1230,6 +1405,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setSpreadsheetIdState(data.spreadsheetId);
             setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, data.spreadsheetId);
           }
+          if (data.spreadsheetName) {
+            setSpreadsheetNameState(data.spreadsheetName);
+            setStoredData('nippon_google_sheet_name', data.spreadsheetName);
+          }
+          if (data.spreadsheetId) {
+            setCloudSpreadsheetInfo({
+              spreadsheetId: data.spreadsheetId,
+              spreadsheetName: data.spreadsheetName || 'สเปรดชีตหลัก (Cloud)',
+              spreadsheetUrl: data.spreadsheetUrl || GoogleSheetsService.getSpreadsheetUrl(data.spreadsheetId),
+              lastSyncTime: data.lastSyncTime,
+              updatedAt: data.updatedAt,
+              ownerEmail: data.ownerEmail,
+            });
+          }
           if (typeof data.autoSync === 'boolean') {
             setAutoSyncSheetsState(data.autoSync);
             setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, data.autoSync);
@@ -1244,7 +1433,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         console.warn('Firestore initial sheet config fetch skipped:', err);
       });
 
-    // Subscribe to real-time changes
+    // Subscribe to real-time changes across all connected devices
     const unsub = onSnapshot(
       configDocRef,
       (snap) => {
@@ -1260,10 +1449,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             });
           }
           if (data.spreadsheetId) {
+            setCloudSpreadsheetInfo({
+              spreadsheetId: data.spreadsheetId,
+              spreadsheetName: data.spreadsheetName || 'สเปรดชีตหลัก (Cloud)',
+              spreadsheetUrl: data.spreadsheetUrl || GoogleSheetsService.getSpreadsheetUrl(data.spreadsheetId),
+              lastSyncTime: data.lastSyncTime,
+              updatedAt: data.updatedAt,
+              ownerEmail: data.ownerEmail,
+            });
             setSpreadsheetIdState((prev) => {
               if (prev !== data.spreadsheetId) {
                 setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, data.spreadsheetId);
                 return data.spreadsheetId;
+              }
+              return prev;
+            });
+          }
+          if (data.spreadsheetName) {
+            setSpreadsheetNameState((prev) => {
+              if (prev !== data.spreadsheetName) {
+                setStoredData('nippon_google_sheet_name', data.spreadsheetName);
+                return data.spreadsheetName;
               }
               return prev;
             });
@@ -1295,20 +1501,173 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return sales.filter((s) => !syncedSet.has(s.id)).length;
   }, [sales, syncedSaleIds]);
 
-  const setSpreadsheetId = async (id: string) => {
+  const setSpreadsheetId = async (id: string, name?: string) => {
     const cleaned = GoogleSheetsService.extractSpreadsheetId(id);
     setSpreadsheetIdState(cleaned);
     setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, cleaned);
 
+    const sheetTitle = name || `สเปรดชีต (${cleaned.substring(0, 8)}...)`;
+    setSpreadsheetNameState(sheetTitle);
+    setStoredData('nippon_google_sheet_name', sheetTitle);
+
     // Save to Firestore so it syncs across all links & devices
     try {
       const configDocRef = doc(db, 'system_config', 'google_sheets');
-      await setDoc(configDocRef, { spreadsheetId: cleaned, updatedAt: new Date().toISOString() }, { merge: true });
+      const payload: any = {
+        spreadsheetId: cleaned,
+        spreadsheetName: sheetTitle,
+        spreadsheetUrl: GoogleSheetsService.getSpreadsheetUrl(cleaned),
+        updatedAt: new Date().toISOString(),
+        ownerEmail: userSession.email || 'pc-app@nippon.com',
+      };
+      await setDoc(configDocRef, payload, { merge: true });
+      setCloudSpreadsheetInfo((prev) => ({ ...prev, ...payload }));
     } catch (e) {
       console.warn('Could not save spreadsheetId to Firestore:', e);
     }
 
-    showToast('บันทึก Spreadsheet ID เรียบร้อย (เชื่อมโยง Cloud ทุกอุปกรณ์)', 'success');
+    showToast('บันทึก Spreadsheet ID เรียบร้อย (เชื่อมโยง Cloud ทุกเครื่อง)', 'success');
+  };
+
+  const selectSpreadsheet = async (id: string, name?: string) => {
+    await setSpreadsheetId(id, name);
+  };
+
+  const connectGoogleOAuth = async () => {
+    try {
+      showToast('กำลังเชื่อมต่อบัญชี Google...', 'info');
+      const token = await GoogleSheetsService.requestOAuthToken(false);
+      setIsGoogleOAuthConnected(true);
+      setGoogleConnected(true);
+      setStoredData(StorageKeys.GOOGLE_SHEET_CONFIG, 'connected');
+      const userEmail = localStorage.getItem('nippon_google_user_email') || userSession.email;
+      showToast('เชื่อมต่อ Google สำเร็จแล้ว พร้อมใช้งาน Google Sheets & Drive', 'success');
+      addAuditLog('Google Sync', `เชื่อมต่อ Google OAuth สำเร็จ (${userEmail || 'บัญชี Google'})`, 'success');
+
+      // Auto load drive files
+      loadDriveSpreadsheets(token).catch(() => {});
+    } catch (err: any) {
+      console.error('Google OAuth error:', err);
+      showToast(err.message || 'เชื่อมต่อ Google ไม่สำเร็จ', 'error');
+    }
+  };
+
+  const disconnectGoogleOAuth = () => {
+    GoogleSheetsService.clearToken();
+    setIsGoogleOAuthConnected(false);
+    setDriveSpreadsheets([]);
+    showToast('ยกเลิกการเชื่อมต่อบัญชี Google แล้ว', 'info');
+    addAuditLog('Google Sync', 'ยกเลิกการเชื่อมต่อ Google OAuth', 'warning');
+  };
+
+  const loadDriveSpreadsheets = async (overrideToken?: string) => {
+    setIsLoadingDriveFiles(true);
+    try {
+      const files = await GoogleSheetsService.listSpreadsheetsFromDrive(overrideToken);
+      setDriveSpreadsheets(files);
+      if (files.length === 0) {
+        showToast('ไม่พบไฟล์ Google Spreadsheet ใน Google Drive', 'info');
+      } else {
+        showToast(`โหลดรายชื่อสเปรดชีตจาก Google Drive สำเร็จ (${files.length} ไฟล์)`, 'success');
+      }
+    } catch (err: any) {
+      console.warn('loadDriveSpreadsheets warning:', err);
+      showToast(err.message || 'ไม่สามารถโหลดไฟล์จาก Google Drive ได้', 'error');
+    } finally {
+      setIsLoadingDriveFiles(false);
+    }
+  };
+
+  const createNewCloudSpreadsheet = async (customTitle?: string) => {
+    try {
+      let activeToken = GoogleSheetsService.getToken();
+      if (!activeToken) {
+        showToast('กำลังเข้าสู่ระบบ Google เพื่อขอสิทธิ์สร้างไฟล์ใน Google Drive...', 'info');
+        activeToken = await GoogleSheetsService.requestOAuthToken(false);
+        setIsGoogleOAuthConnected(true);
+        setGoogleConnected(true);
+        setStoredData(StorageKeys.GOOGLE_SHEET_CONFIG, 'connected');
+        loadDriveSpreadsheets(activeToken).catch(() => {});
+      }
+
+      showToast('กำลังสร้าง Google Spreadsheet ใหม่พร้อม 5 แท็บ...', 'info');
+      const title = customTitle || `${brandSettings.brandName} — บันทึกยอดขาย & รายงาน (Real-time)`;
+      const created = await GoogleSheetsService.createSpreadsheet(title, brandSettings.brandName, activeToken);
+
+      await selectSpreadsheet(created.id, created.title);
+      showToast(`สร้างและเชื่อมต่อ Google Sheet: "${created.title}" สำเร็จแล้ว!`, 'success');
+      addAuditLog('Google Sync', `สร้าง Google Spreadsheet ใหม่ [${created.title}] (ID: ${created.id})`, 'success');
+    } catch (err: any) {
+      console.warn('Create spreadsheet warning:', err);
+      const msg = err?.message || 'สร้างสเปรดชีตไม่สำเร็จ';
+      showToast(msg, 'error');
+      throw err;
+    }
+  };
+
+  const pullSalesFromGoogleSheet = async (): Promise<number> => {
+    const targetId = spreadsheetId || cloudSpreadsheetInfo?.spreadsheetId;
+    if (!targetId) {
+      showToast('กรุณาเลือกหรือระบุ Google Sheet ก่อนดึงข้อมูล', 'error');
+      return 0;
+    }
+
+    try {
+      showToast('กำลังดึงยอดขายจาก Google Sheet...', 'info');
+      const sheetSales = await GoogleSheetsService.fetchSalesFromGoogleSheet(targetId);
+      if (!sheetSales || sheetSales.length === 0) {
+        showToast('ไม่พบรายการขายในแท็บ Sales_Transactions ใน Google Sheet', 'info');
+        return 0;
+      }
+
+      // Merge with existing sales, avoiding duplicates by billId + productName + size + quantity
+      const existingKeySet = new Set(
+        sales.map((s) => `${s.billId}_${s.productName}_${s.size}_${s.quantity}_${s.total}`)
+      );
+
+      const newRecords: SaleItem[] = [];
+      sheetSales.forEach((s) => {
+        const key = `${s.billId}_${s.productName}_${s.size}_${s.quantity}_${s.total}`;
+        if (!existingKeySet.has(key)) {
+          newRecords.push(s);
+          existingKeySet.add(key);
+        }
+      });
+
+      if (newRecords.length > 0) {
+        const merged = [...newRecords, ...sales];
+        setSales(merged);
+        setStoredData(StorageKeys.SALES, merged);
+
+        const allIds = sheetSales.map((s) => s.id);
+        setSyncedSaleIds((prev) => Array.from(new Set([...prev, ...allIds])));
+        setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, Array.from(new Set([...syncedSaleIds, ...allIds])));
+
+        showToast(
+          `ดึงยอดขายสำเร็จ! เพิ่มรายการใหม่จาก Google Sheet จำนวน ${newRecords.length} รายการ (รวมทั้งสิ้น ${sheetSales.length} รายการ)`,
+          'success'
+        );
+        addAuditLog('Google Sync', `ดึงข้อมูลจาก Google Sheet เข้ามาในเครื่อง ${newRecords.length} รายการใหม่`, 'success');
+      } else {
+        showToast(`ข้อมูลในเครื่องอัปเดตตรงกับ Google Sheet แล้ว (พบ ${sheetSales.length} รายการ)`, 'info');
+      }
+
+      return newRecords.length;
+    } catch (err: any) {
+      console.error('pullSalesFromGoogleSheet error:', err);
+      showToast(err.message || 'ไม่สามารถดึงยอดขายจาก Google Sheet ได้', 'error');
+      throw err;
+    }
+  };
+
+  const openSpreadsheetViewer = () => {
+    setModalOpen('google-sheet-viewer');
+  };
+
+  const closeSpreadsheetViewer = () => {
+    if (modalOpen === 'google-sheet-viewer') {
+      setModalOpen(null);
+    }
   };
 
   const setGoogleWebhookUrl = async (url: string) => {
@@ -1437,6 +1796,82 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const syncAllTabsToGoogle = async () => {
+    if (!googleWebhookUrl) {
+      const msg = 'กรุณาระบุ Google Apps Script Webhook URL ในหน้าซิงค์ข้อมูลเพื่อเปิดใช้ระบบ 5 ชีตในคลิกเดียว';
+      setSyncError(msg);
+      showToast(msg, 'error');
+      setActiveTab('sheets-sync');
+      return;
+    }
+
+    setSyncStatus('syncing');
+    setSyncError(null);
+
+    try {
+      await GoogleSheetsService.pushAllTabsViaWebhook(googleWebhookUrl, {
+        sales,
+        customers,
+        catalog: catalogItems,
+        stock: computedStock,
+        commission: computedCommission,
+        salesperson: userSession.name,
+        branch: brandSettings.branch,
+      });
+
+      const syncedIds = sales.map((s) => s.id);
+      setSyncedSaleIds(syncedIds);
+      setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, syncedIds);
+
+      const now = new Date().toLocaleTimeString('th-TH');
+      setLastSyncTime(now);
+      setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, now);
+
+      try {
+        const configDocRef = doc(db, 'system_config', 'google_sheets');
+        setDoc(configDocRef, { lastSyncTime: now, lastSyncTimestamp: Date.now() }, { merge: true }).catch(() => {});
+      } catch (e) {}
+
+      setSyncStatus('success');
+      addAuditLog('Google Sync', `ซิงค์ข้อมูลครบทั้ง 5 แท็บ (ยอดขาย, ลูกค้า, สินค้า, สต็อก, คอมมิชชั่น) ลง Google Sheet สำเร็จ`, 'success');
+      showToast('⚡ ซิงค์ครบทั้ง 5 แท็บลง Google Sheet เรียบร้อยแล้ว!', 'success');
+    } catch (err: any) {
+      setSyncStatus('error');
+      const msg = err.message || 'ไม่สามารถซิงค์ได้';
+      setSyncError(msg);
+      showToast(`เกิดข้อผิดพลาดในการซิงค์: ${msg}`, 'error');
+      throw err;
+    }
+  };
+
+  const exportAllTabsToExcel = () => {
+    try {
+      const filename = `${brandSettings.brandName.replace(/\s+/g, '_')}_Master_Data_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      GoogleSheetsService.exportMultiTabExcel({
+        sales,
+        customers,
+        catalog: catalogItems,
+        stock: computedStock,
+        commission: computedCommission,
+        salesperson: userSession.name,
+        branch: brandSettings.branch,
+      }, filename);
+      showToast('📥 ดาวน์โหลดไฟล์ Excel รวม 5 แท็บสำเร็จแล้ว (นำเข้า Google Sheet ได้ทันที)', 'success');
+    } catch (err: any) {
+      showToast(`ส่งออกไฟล์ไม่สำเร็จ: ${err.message || ''}`, 'error');
+    }
+  };
+
+  const openSpreadsheet = () => {
+    const targetUrl = spreadsheetUrl || (spreadsheetId ? GoogleSheetsService.getSpreadsheetUrl(spreadsheetId) : '');
+    if (targetUrl) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      showToast('ยังไม่ได้ระบุลิงก์ Google Sheet • กรุณาวางลิงก์ในหน้าซิงค์ข้อมูล', 'info');
+      setActiveTab('sheets-sync');
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1502,10 +1937,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resetToFactorySettings,
         modalOpen,
         setModalOpen,
+        activeMonth,
+        setActiveMonth,
+        availableMonths,
+        allTimeSalesTotal,
+        allTimeSalesCount,
         googleConnected,
         connectGoogle,
         disconnectGoogle,
         spreadsheetId,
+        spreadsheetName,
         spreadsheetUrl,
         setSpreadsheetId,
         googleWebhookUrl,
@@ -1520,6 +1961,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         lastSyncTime,
         exportSalesToCsv,
         copySalesToClipboard,
+        syncAllTabsToGoogle,
+        exportAllTabsToExcel,
+        openSpreadsheet,
+        isGoogleOAuthConnected,
+        connectGoogleOAuth,
+        disconnectGoogleOAuth,
+        driveSpreadsheets,
+        isLoadingDriveFiles,
+        loadDriveSpreadsheets,
+        cloudSpreadsheetInfo,
+        selectSpreadsheet,
+        createNewCloudSpreadsheet,
+        pullSalesFromGoogleSheet,
+        openSpreadsheetViewer,
+        closeSpreadsheetViewer,
       }}
     >
       {children}

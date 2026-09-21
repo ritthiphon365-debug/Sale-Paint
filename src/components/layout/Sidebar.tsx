@@ -20,6 +20,8 @@ import {
   Sparkles,
   Sheet,
   Smartphone,
+  MessageCircle,
+  Eye,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -30,14 +32,19 @@ export const Sidebar: React.FC = () => {
     brandSettings,
     userSession,
     isOnline,
-    loginWithGoogle,
     logout,
     setModalOpen,
+    openSpreadsheet,
+    openSpreadsheetViewer,
+    spreadsheetUrl,
+    spreadsheetId,
+    spreadsheetName,
   } = useApp();
 
   const navItems = [
     { id: 'dashboard', th: 'ภาพรวมยอดขาย', en: 'Dashboard', icon: LayoutDashboard },
     { id: 'sales-entry', th: 'บันทึกการขาย', en: 'Sales Entry', icon: PlusCircle },
+    { id: 'sheets-sync', th: 'Google Sheet 5 ชีต', en: '1-Click Multi-Tab', icon: Sheet },
     { id: 'catalog', th: 'ฐานข้อมูลสินค้า PC', en: 'Product Catalog', icon: Layers },
     { id: 'history', th: 'ประวัติและส่งออก', en: 'History & Export', icon: History },
     { id: 'market-share', th: 'ส่วนแบ่งตลาด MKS', en: 'Market Share', icon: PieChart },
@@ -121,6 +128,28 @@ export const Sidebar: React.FC = () => {
 
       {/* Auxiliary quick links & User profile footer */}
       <div className="p-3 border-t border-slate-800/90 bg-slate-950/60 space-y-2">
+        {/* Real-time Google Sheet quick status & open button */}
+        {spreadsheetId && (
+          <button
+            onClick={openSpreadsheetViewer}
+            className="w-full flex items-center justify-between px-3 py-2 bg-emerald-950/50 hover:bg-emerald-900/70 border border-emerald-800/60 rounded-xl text-xs text-emerald-300 transition-all group"
+            title="คลิกเพื่อเปิดดู Google Sheet ในแอป"
+          >
+            <div className="flex items-center gap-2 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <div className="truncate text-left">
+                <div className="font-semibold truncate text-[11px] text-emerald-200">
+                  {spreadsheetName || 'Google Sheet สด'}
+                </div>
+                <div className="text-[9px] text-emerald-400/80 flex items-center gap-1">
+                  <span>Real-time Sync</span>
+                </div>
+              </div>
+            </div>
+            <Eye className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 shrink-0" />
+          </button>
+        )}
+
         <div className="grid grid-cols-3 gap-1 px-1">
           <button
             onClick={() => setActiveTab('sheets-sync')}
@@ -192,24 +221,24 @@ export const Sidebar: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 pt-0.5">
+          <div className="space-y-1.5 pt-0.5">
             <button
-              onClick={() => loginWithGoogle()}
-              className="flex-1 py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-medium flex items-center justify-center gap-1.5 transition-colors border border-slate-700/60"
-              title="กดเพื่อสลับหรือเข้าสู่ระบบด้วย Google"
+              onClick={() => setModalOpen('ai-assistant')}
+              className="w-full py-1.5 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              title="เปิดน้องบอท สอบถามยอดขายและค่าคอมมิชชั่น"
             >
-              <LogIn className="w-3 h-3 text-amber-400" />
-              <span>สลับ / ล็อกอิน Google</span>
+              <MessageCircle className="w-3.5 h-3.5 text-white fill-white" />
+              <span>น้องบอท</span>
             </button>
-            {userSession.email && (
-              <button
-                onClick={() => logout()}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition-colors"
-                title="ออกจากระบบ"
-              >
-                <LogOut className="w-3 h-3" />
-              </button>
-            )}
+
+            <button
+              onClick={() => openSpreadsheet()}
+              className="w-full py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 text-[10px] font-medium flex items-center justify-center gap-1.5 transition-colors border border-slate-700/60 cursor-pointer"
+              title="คลิกเพื่อเปิดดู Google Spreadsheet 5 แท็บของเราบนแท็บใหม่ทันที"
+            >
+              <Sheet className="w-3.5 h-3.5" />
+              <span>เปิดดู Google Sheet ของเรา</span>
+            </button>
           </div>
         </div>
       </div>
