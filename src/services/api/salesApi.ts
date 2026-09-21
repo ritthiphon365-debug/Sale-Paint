@@ -1,12 +1,12 @@
 /**
  * SALE PAINT — SALES API
  * Manages sales and bill records with snake_case <-> camelCase mapping.
- * Connects to Cloudflare Worker / Supabase API Gateway.
+ * Talks directly to Supabase (RLS restricts access to authenticated users).
  */
 
 import { SaleItem } from '../../types';
-import { ApiClient } from './apiClient';
-import { CheckoutRequest } from './types';
+import { getSupabase } from '../../lib/supabase';
+import { CheckoutRequest, ApiResponse } from './types';
 
 function mapDbRowToSaleItem(row: any): SaleItem {
   return {
@@ -59,25 +59,63 @@ function mapSaleItemToDbRow(item: Partial<SaleItem>): Record<string, any> {
   return row;
 }
 
+function errorResponse(err: any): ApiResponse {
+  return {
+    success: false,
+    error: { code: 'SUPABASE_ERROR', message: err?.message || 'Request failed', timestamp: new Date().toISOString() },
+  };
+}
+
 export class SalesApi {
   static async fetchSales(limit = 2000): Promise<SaleItem[]> {
-    const res = await ApiClient.get<any[]>('/sales', { limit: String(limit) });
-    if (!res.success || !Array.isArray(res.data)) {
-      return [];
+    const client = getSupabase();
+    if (!client) return [];
+    const { data, error } = await client
+      .from('sales')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error || !Array.isArray(data)) return [];
+    return data.map(mapDbRowToSaleItem);
+  }
+
+  static async checkoutSaleBill(req: CheckoutRequest, _idempotencyKey?: string): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
+    try {
+      const { data, error } = await client.rpc('execute_atomic_checkout', {
+        p_bill: req.bill,
+        p_items: req.items,
+        p_allow_oversell: req.allowOversell ?? true,
+      });
+      if (error) return errorResponse(error);
+      if (data?.success === false) {
+        return {
+          success: false,
+          error: { code: data.error_code || 'CHECKOUT_FAILED', message: data.message || 'บันทึกการขายไม่สำเร็จ', details: data.insufficient_items },
+        };
+      }
+      return { success: true, bill_id: data?.bill_id, item_count: data?.item_count, total_amount: data?.total_amount };
+    } catch (err) {
+      return errorResponse(err);
     }
-    return res.data.map(mapDbRowToSaleItem);
   }
 
-  static async checkoutSaleBill(req: CheckoutRequest, idempotencyKey?: string) {
-    return ApiClient.post('/sales/checkout', req, idempotencyKey);
-  }
-
-  static async updateSale(id: string, partialSale: Partial<SaleItem>) {
+  static async updateSale(id: string, partialSale: Partial<SaleItem>): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
     const dbPayload = mapSaleItemToDbRow(partialSale);
-    return ApiClient.put(`/sales/${id}`, dbPayload);
+    dbPayload.updated_at = new Date().toISOString();
+    const { error } = await client.from('sales').update(dbPayload).eq('id', id);
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 
-  static async deleteSale(id: string) {
-    return ApiClient.delete(`/sales/${id}`);
+  static async deleteSale(id: string): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
+    const { error } = await client.from('sales').delete().eq('id', id);
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 }

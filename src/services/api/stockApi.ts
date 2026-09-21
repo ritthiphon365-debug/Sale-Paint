@@ -1,10 +1,11 @@
 /**
  * SALE PAINT — STOCK API
- * Manages atomic stock inventory receipts and balance inquiries.
+ * Manages stock inventory receipts and balance inquiries directly via Supabase.
  */
 
 import { StockInRecord } from '../../types';
-import { ApiClient } from './apiClient';
+import { getSupabase } from '../../lib/supabase';
+import { ApiResponse } from './types';
 
 function mapDbRowToStockIn(row: any): StockInRecord {
   return {
@@ -37,31 +38,47 @@ function mapStockInToDbRow(rec: StockInRecord): Record<string, any> {
   };
 }
 
+function errorResponse(err: any): ApiResponse {
+  return {
+    success: false,
+    error: { code: 'SUPABASE_ERROR', message: err?.message || 'Request failed', timestamp: new Date().toISOString() },
+  };
+}
+
 export class StockApi {
   static async fetchStockIns(): Promise<StockInRecord[]> {
-    const res = await ApiClient.get<any[]>('/stock/stock-ins');
-    if (!res.success || !Array.isArray(res.data)) {
-      return [];
-    }
-    return res.data.map(mapDbRowToStockIn);
+    const client = getSupabase();
+    if (!client) return [];
+    const { data, error } = await client.from('stock_ins').select('*').order('created_at', { ascending: false });
+    if (error || !Array.isArray(data)) return [];
+    return data.map(mapDbRowToStockIn);
   }
 
-  static async addStockIn(record: StockInRecord) {
-    const dbPayload = mapStockInToDbRow(record);
-    return ApiClient.post('/stock/stock-in', { record: dbPayload });
+  static async addStockIn(record: StockInRecord): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
+    const { error } = await client.from('stock_ins').insert(mapStockInToDbRow(record));
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 
-  static async bulkAddStockIn(records: StockInRecord[]) {
-    const dbPayload = records.map(mapStockInToDbRow);
-    return ApiClient.post('/stock/bulk-stock-in', { records: dbPayload });
+  static async bulkAddStockIn(records: StockInRecord[]): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
+    const { error } = await client.from('stock_ins').insert(records.map(mapStockInToDbRow));
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 
   static async getVariantBalance(productId: string, size: string, base?: string): Promise<number> {
-    const res = await ApiClient.get<any>('/stock/variant-balance', {
-      productId,
-      size,
-      base: base || 'NONE',
+    const client = getSupabase();
+    if (!client) return 0;
+    const { data, error } = await client.rpc('get_variant_stock', {
+      p_product_id: productId,
+      p_size: size,
+      p_base: base && base !== 'NONE' ? base : null,
     });
-    return Number(res.data?.balance || 0);
+    if (error) return 0;
+    return Number(data || 0);
   }
 }

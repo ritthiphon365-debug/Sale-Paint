@@ -12,12 +12,14 @@
  * Includes multi-tab broadcast fallback for zero-latency local sync.
  */
 
+import { getSupabase } from '../../lib/supabase';
+
 type RealtimeCallback<T = any> = (payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE' | 'SYNC'; new?: T; old?: T }) => void;
 
 export class RealtimeService {
   private static subscribers: Map<string, Set<RealtimeCallback>> = new Map();
   private static broadcastChannel: BroadcastChannel | null = null;
-  private static activeEventSource: EventSource | null = null;
+  private static supabaseChannelsInitialized = false;
 
   static init() {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window && !this.broadcastChannel) {
@@ -34,34 +36,29 @@ export class RealtimeService {
       }
     }
 
-    // Connect to server SSE stream if available
-    this.connectServerStream();
+    // Connect to Supabase Realtime (Postgres Changes) so other devices see live updates
+    this.connectSupabaseRealtime();
   }
 
-  private static connectServerStream() {
-    if (typeof window === 'undefined') return;
-    try {
-      if (this.activeEventSource) {
-        this.activeEventSource.close();
-      }
+  private static connectSupabaseRealtime() {
+    if (typeof window === 'undefined' || this.supabaseChannelsInitialized) return;
+    const client = getSupabase();
+    if (!client) return;
+    this.supabaseChannelsInitialized = true;
 
-      this.activeEventSource = new EventSource('/api/v1/realtime/stream');
-      this.activeEventSource.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          const { table, eventType, data } = message;
-          if (table && this.subscribers.has(table)) {
-            this.subscribers.get(table)?.forEach((cb) => cb({ eventType: eventType || 'SYNC', new: data }));
+    const tables = ['sales', 'products', 'catalog_items', 'stock_ins', 'system_configs'];
+    tables.forEach((table) => {
+      client
+        .channel(`public:${table}:live`)
+        .on('postgres_changes', { event: '*', schema: 'public', table }, (payload: any) => {
+          if (this.subscribers.has(table)) {
+            this.subscribers
+              .get(table)
+              ?.forEach((cb) => cb({ eventType: payload.eventType, new: payload.new, old: payload.old }));
           }
-        } catch {}
-      };
-
-      this.activeEventSource.onerror = () => {
-        // Silent recovery; SSE will auto-reconnect
-      };
-    } catch {
-      // SSE optional
-    }
+        })
+        .subscribe();
+    });
   }
 
   static subscribe(table: 'sales' | 'products' | 'catalog_items' | 'stock_ins' | 'system_configs', callback: RealtimeCallback) {

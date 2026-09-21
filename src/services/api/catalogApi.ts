@@ -1,10 +1,11 @@
 /**
  * SALE PAINT — CATALOG API
- * Manages SKU catalog items and tinting lookup tables via API Gateway.
+ * Manages SKU catalog items and tinting lookup tables directly via Supabase.
  */
 
 import { CatalogItem } from '../../types';
-import { ApiClient } from './apiClient';
+import { getSupabase } from '../../lib/supabase';
+import { ApiResponse } from './types';
 
 function mapDbRowToCatalogItem(row: any): CatalogItem {
   return {
@@ -38,21 +39,36 @@ function mapCatalogItemToDbRow(item: CatalogItem): Record<string, any> {
   };
 }
 
+function errorResponse(err: any): ApiResponse {
+  return {
+    success: false,
+    error: { code: 'SUPABASE_ERROR', message: err?.message || 'Request failed', timestamp: new Date().toISOString() },
+  };
+}
+
 export class CatalogApi {
   static async fetchCatalog(): Promise<CatalogItem[]> {
-    const res = await ApiClient.get<any[]>('/catalog');
-    if (!res.success || !Array.isArray(res.data)) {
-      return [];
-    }
-    return res.data.map(mapDbRowToCatalogItem);
+    const client = getSupabase();
+    if (!client) return [];
+    const { data, error } = await client.from('catalog_items').select('*');
+    if (error || !Array.isArray(data)) return [];
+    return data.map(mapDbRowToCatalogItem);
   }
 
-  static async upsertCatalog(items: CatalogItem[]) {
+  static async upsertCatalog(items: CatalogItem[]): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
     const dbPayload = items.map(mapCatalogItemToDbRow);
-    return ApiClient.post('/catalog/upsert', { items: dbPayload });
+    const { error } = await client.from('catalog_items').upsert(dbPayload, { onConflict: 'id' });
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 
-  static async deleteCatalogItem(id: string) {
-    return ApiClient.delete(`/catalog/${id}`);
+  static async deleteCatalogItem(id: string): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
+    const { error } = await client.from('catalog_items').delete().eq('id', id);
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 }

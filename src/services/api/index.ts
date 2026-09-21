@@ -3,7 +3,6 @@
  */
 
 export * from './types';
-export * from './apiClient';
 export * from './salesApi';
 export * from './productsApi';
 export * from './catalogApi';

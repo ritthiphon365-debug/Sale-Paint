@@ -1,10 +1,11 @@
 /**
  * SALE PAINT — PRODUCTS API
- * Manages product definitions and configurations via Supabase API Gateway.
+ * Manages product definitions and configurations directly via Supabase.
  */
 
 import { ProductConfig } from '../../types';
-import { ApiClient } from './apiClient';
+import { getSupabase } from '../../lib/supabase';
+import { ApiResponse } from './types';
 
 function mapDbRowToProduct(row: any): ProductConfig {
   return {
@@ -45,21 +46,36 @@ function mapProductToDbRow(prod: ProductConfig): Record<string, any> {
   };
 }
 
+function errorResponse(err: any): ApiResponse {
+  return {
+    success: false,
+    error: { code: 'SUPABASE_ERROR', message: err?.message || 'Request failed', timestamp: new Date().toISOString() },
+  };
+}
+
 export class ProductsApi {
   static async fetchProducts(): Promise<ProductConfig[]> {
-    const res = await ApiClient.get<any[]>('/products');
-    if (!res.success || !Array.isArray(res.data)) {
-      return [];
-    }
-    return res.data.map(mapDbRowToProduct);
+    const client = getSupabase();
+    if (!client) return [];
+    const { data, error } = await client.from('products').select('*');
+    if (error || !Array.isArray(data)) return [];
+    return data.map(mapDbRowToProduct);
   }
 
-  static async upsertProducts(products: ProductConfig[]) {
+  static async upsertProducts(products: ProductConfig[]): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
     const dbPayload = products.map(mapProductToDbRow);
-    return ApiClient.post('/products/upsert', { products: dbPayload });
+    const { error } = await client.from('products').upsert(dbPayload, { onConflict: 'id' });
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 
-  static async deleteProduct(id: string) {
-    return ApiClient.delete(`/products/${id}`);
+  static async deleteProduct(id: string): Promise<ApiResponse> {
+    const client = getSupabase();
+    if (!client) return errorResponse({ message: 'Supabase ยังไม่ได้ตั้งค่า' });
+    const { error } = await client.from('products').delete().eq('id', id);
+    if (error) return errorResponse(error);
+    return { success: true };
   }
 }
