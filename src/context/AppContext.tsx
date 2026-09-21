@@ -1320,6 +1320,55 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataBackend]);
 
+  // Multi-device polling: ไม่ต้องเปิด Supabase Realtime replication ก็ได้ — ตราบใดที่สอง
+  // หน้าจอเปิดแอปพร้อมกัน แอปจะ "ดึงข้อมูลล่าสุดจาก Supabase มาเช็คซ้ำ" เป็นรอบๆ ให้อัตโนมัติ
+  // ถ้ามีการเปลี่ยนแปลงจากเครื่องอื่น หน้าจอนี้จะได้เห็นข้อมูลล่าสุดภายในไม่กี่วินาที โดยไม่ต้องกดรีเฟรชเอง
+  // ปรับความถี่ได้ที่ POLL_INTERVAL_MS ด้านล่าง (ค่าเริ่มต้น: ทุก 15 วินาที)
+  const POLL_INTERVAL_MS = 15 * 1000;
+  useEffect(() => {
+    if (dataBackend !== 'supabase') return;
+
+    const pollLatestData = async () => {
+      try {
+        const [prods, salesData, catalog, stock] = await Promise.all([
+          DataService.getProducts(),
+          DataService.getSales(),
+          DataService.getCatalog(),
+          DataService.getStockIns(),
+        ]);
+
+        // Guard เดียวกับ realtime subscriber ด้านบน: ผลลัพธ์ว่างเปล่าจาก network
+        // ที่ล่าช้าหรือมีปัญหาชั่วคราว จะไม่ไปทับข้อมูลที่มีอยู่แล้วในเครื่อง
+        setProducts((prev) => {
+          if (!prods || (prods.length === 0 && prev.length > 0)) return prev;
+          setStoredData(StorageKeys.PRODUCTS, prods);
+          return prods;
+        });
+        setSales((prev) => {
+          if (!salesData || (salesData.length === 0 && prev.length > 0)) return prev;
+          setStoredData(StorageKeys.SALES, salesData);
+          return salesData;
+        });
+        setCatalogItems((prev) => {
+          if (!catalog || (catalog.length === 0 && prev.length > 0)) return prev;
+          setStoredData(StorageKeys.CATALOG_ITEMS, catalog);
+          return catalog;
+        });
+        setStockIns((prev) => {
+          if (!stock || (stock.length === 0 && prev.length > 0)) return prev;
+          setStoredData(StorageKeys.STOCK_IN, stock);
+          return stock;
+        });
+      } catch (e) {
+        console.warn('[Poll] Multi-device refresh failed:', e);
+      }
+    };
+
+    const timer = setInterval(pollLatestData, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataBackend]);
+
   // Computed Stock
   const computedStock = useMemo(() => {
     return computeStockInventory(products, stockIns, sales);
