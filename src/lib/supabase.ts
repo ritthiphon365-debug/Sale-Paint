@@ -48,6 +48,15 @@ export const SupabaseAuthFoundation = {
     return Boolean(supabaseUrl && supabaseAnonKey);
   },
 
+  signInWithPassword: async (email: string, password: string): Promise<{ user?: any; error?: any }> => {
+    const client = getSupabase();
+    if (!client) {
+      return { error: new Error('Supabase ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY') };
+    }
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    return { user: data?.user, error };
+  },
+
   signInWithGoogle: async (): Promise<{ url?: string; error?: any }> => {
     const client = getSupabase();
     if (!client) {
