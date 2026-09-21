@@ -1,5 +1,5 @@
 import { SaleItem, StockInRecord, ProductConfig, StockItemComputed, CustomerCRM, FollowUpStatus, CommissionConfig, GallonIncentiveRule, SizeOption } from '../types';
-import { GATE_PERCENT, GALLON_CAP_PER_PERSON, LEGACY_MAIN_TABLE, calcGallonPayout, calcLegacyCommission } from './commissionLegacy';
+import { GATE_PERCENT, GALLON_CAP_PER_PERSON, LEGACY_MAIN_TABLE, LEGACY_SPECIAL_TABLE, LEGACY_PERHEAD_TABLE, calcGallonPayout, calcLegacyCommission } from './commissionLegacy';
 
 export function computeStockInventory(
   products: ProductConfig[],
@@ -207,11 +207,16 @@ export function computeCommission(
   const totalSalesAmount = monthSales.reduce((acc, s) => acc + s.total, 0);
   const totalQuantity = monthSales.reduce((acc, s) => acc + s.quantity, 0);
   const target = config.monthlyTarget || 500000;
-  const legacy = calcLegacyCommission(target, totalSalesAmount, config.headcount);
+  const mainTable = (config.tiers || []).map((t) => ({ pct: t.achievementPercent, amt: t.rewardAmount })).sort((a, b) => a.pct - b.pct);
+  const effectiveMainTable = mainTable.length ? mainTable : LEGACY_MAIN_TABLE;
+  const specialTable = config.legacySpecialTable?.length ? config.legacySpecialTable.slice().sort((a, b) => a.pct - b.pct) : LEGACY_SPECIAL_TABLE;
+  const perHeadTable = config.legacyPerHeadTable?.length ? config.legacyPerHeadTable.slice().sort((a, b) => b.min - a.min) : LEGACY_PERHEAD_TABLE;
+  const gallonGatePercent = typeof config.minTargetAchievementForGallon === 'number' ? config.minTargetAchievementForGallon : GATE_PERCENT;
+  const legacy = calcLegacyCommission(target, totalSalesAmount, config.headcount, { mainTable: effectiveMainTable, specialTable, perHeadTable });
   const achievementPercent = legacy.pct;
 
-  const activeTier = [...LEGACY_MAIN_TABLE].reverse().find((t) => achievementPercent >= t.pct);
-  const nextLegacyTier = LEGACY_MAIN_TABLE.find((t) => t.pct > achievementPercent);
+  const activeTier = [...effectiveMainTable].reverse().find((t) => achievementPercent >= t.pct);
+  const nextLegacyTier = effectiveMainTable.find((t) => t.pct > achievementPercent);
   const nextTier = nextLegacyTier
     ? { achievementPercent: nextLegacyTier.pct, rewardAmount: nextLegacyTier.amt }
     : undefined;
@@ -256,13 +261,13 @@ export function computeCommission(
         : 'กำหนดจำนวนขั้นต่ำต่อชุดไม่ถูกต้อง';
     }
 
-    const isTargetAchieved = achievementPercent >= GATE_PERCENT;
+    const isTargetAchieved = achievementPercent >= gallonGatePercent;
     const earnedAmount = isTargetAchieved ? potentialAmount : 0;
     const isQualified = matchedQuantity > 0 && potentialAmount > 0 && isTargetAchieved;
-    const gapToUnlock = Math.max(0, Math.ceil((target * GATE_PERCENT) / 100 - totalSalesAmount));
+    const gapToUnlock = Math.max(0, Math.ceil((target * gallonGatePercent) / 100 - totalSalesAmount));
     const targetGateMessage = isTargetAchieved
-      ? `ผ่านเกณฑ์ยอดรวม ${GATE_PERCENT}% ของเป้าแล้ว`
-      : `ต้องได้ยอดรวมถึง ${GATE_PERCENT}% ของเป้า ขาดอีก ฿${gapToUnlock.toLocaleString()}`;
+      ? `ผ่านเกณฑ์ยอดรวม ${gallonGatePercent}% ของเป้าแล้ว`
+      : `ต้องได้ยอดรวมถึง ${gallonGatePercent}% ของเป้า ขาดอีก ฿${gapToUnlock.toLocaleString()}`;
 
     gallonSubtotal += potentialAmount;
     ruleBreakdowns.push({
@@ -278,19 +283,19 @@ export function computeCommission(
       potentialAmount,
       rewardRate: rule.reward,
       targetQuantity: rule.minQuantity,
-      requiredTargetPercent: GATE_PERCENT,
+      requiredTargetPercent: gallonGatePercent,
       isTargetAchieved,
       targetGateMessage,
     });
   });
 
   const gallonPayout = calcGallonPayout(gallonSubtotal, legacy.headcount);
-  const gallonIncentiveTotal = achievementPercent >= GATE_PERCENT ? gallonPayout.paidTotal : 0;
+  const gallonIncentiveTotal = achievementPercent >= gallonGatePercent ? gallonPayout.paidTotal : 0;
   const gallonIncentivePotentialTotal = gallonPayout.paidTotal;
   const gallonCapApplied = gallonPayout.perPersonRaw > GALLON_CAP_PER_PERSON;
-  const globalTargetPercent = GATE_PERCENT;
-  const isGallonTargetUnlocked = achievementPercent >= GATE_PERCENT;
-  const gapToGallonUnlock = Math.max(0, Math.ceil((target * GATE_PERCENT) / 100 - totalSalesAmount));
+  const globalTargetPercent = gallonGatePercent;
+  const isGallonTargetUnlocked = achievementPercent >= gallonGatePercent;
+  const gapToGallonUnlock = Math.max(0, Math.ceil((target * gallonGatePercent) / 100 - totalSalesAmount));
   const grandTotalCommission = legacy.main + legacy.special + legacy.perHead + gallonIncentiveTotal;
 
   return {

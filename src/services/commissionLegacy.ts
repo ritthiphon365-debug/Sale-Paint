@@ -5,15 +5,19 @@ export const GATE_PERCENT = 80;
 export const GALLON_CAP_PER_PERSON = 5000;
 const lookupTiered = (table:{pct:number;amt:number}[], pct:number) => { let amt = 0; for (const t of table) { if (pct >= t.pct) amt = t.amt; } return amt; };
 export const inSpecialBand = (target:number) => target >= 200000 && target <= 400000;
-export function calcLegacyCommission(target:number, sales:number, headcount:number) {
+export function calcLegacyCommission(target:number, sales:number, headcount:number, options?: { mainTable?: {pct:number;amt:number}[]; specialTable?: {pct:number;amt:number}[]; perHeadTable?: {min:number;amt:number}[]; gatePercent?: number }) {
+  const mainTable = options?.mainTable ?? LEGACY_MAIN_TABLE;
+  const specialTable = options?.specialTable ?? LEGACY_SPECIAL_TABLE;
+  const perHeadTable = options?.perHeadTable ?? LEGACY_PERHEAD_TABLE;
+  const gatePercent = options?.gatePercent ?? GATE_PERCENT;
   const pct = target > 0 ? (sales / target * 100) : 0;
-  const monthGoalReached = pct >= GATE_PERCENT;
-  const main = monthGoalReached ? lookupTiered(LEGACY_MAIN_TABLE, pct) : 0;
-  const special = (inSpecialBand(target) && monthGoalReached) ? lookupTiered(LEGACY_SPECIAL_TABLE, pct) : 0;
+  const monthGoalReached = pct >= gatePercent;
+  const main = monthGoalReached ? lookupTiered(mainTable, pct) : 0;
+  const special = (inSpecialBand(target) && monthGoalReached) ? lookupTiered(specialTable, pct) : 0;
   const hc = headcount > 0 ? headcount : 1;
   const perPersonSales = sales / hc;
   let perHead = 0;
-  if (monthGoalReached) { for (const t of LEGACY_PERHEAD_TABLE) { if (perPersonSales >= t.min) { perHead = t.amt; break; } } }
+  if (monthGoalReached) { for (const t of perHeadTable) { if (perPersonSales >= t.min) { perHead = t.amt; break; } } }
   return { pct, main, special, perHead, perPersonSales, headcount: hc, monthGoalReached, total: main + special + perHead, inSpecialBand: inSpecialBand(target) };
 }
 export function calcGallonPayout(subtotal:number, headcount:number) {
