@@ -4,6 +4,8 @@ compatibility_date = "2026-09-21"
 
 [vars]
 ENVIRONMENT = "production"
+FIREBASE_PROJECT_ID = "gen-lang-client-0962911752"
+ALLOWED_ORIGINS = "https://sale-paint.vercel.app"
 
 # Supabase secrets must be populated via wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 # or Cloudflare Dashboard
