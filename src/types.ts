@@ -208,7 +208,7 @@ export interface BrandSettings {
 export interface AuditLog {
   id: string;
   timestamp: string;
-  action: 'Add Sale' | 'Edit Sale' | 'Delete Sale' | 'Stock In' | 'Stock Adjustment' | 'Product Edit' | 'Import Excel' | 'Export' | 'Settings Change' | 'Google Sync' | 'Reset Data';
+  action: 'Add Sale' | 'Edit Sale' | 'Delete Sale' | 'Stock In' | 'Stock Adjustment' | 'Product Edit' | 'Import Excel' | 'Export' | 'Settings Change' | 'Reset Data';
   user: string;
   detail: string;
   flag?: 'info' | 'warning' | 'danger' | 'success';
@@ -230,18 +230,3 @@ export interface MonthTargetData {
   brandTargets?: Record<string, number>;
 }
 
-export interface DriveSpreadsheetItem {
-  id: string;
-  name: string;
-  modifiedTime?: string;
-  webViewLink?: string;
-}
-
-export interface CloudSpreadsheetInfo {
-  spreadsheetId: string;
-  spreadsheetName?: string;
-  spreadsheetUrl?: string;
-  lastSyncTime?: string;
-  updatedAt?: string;
-  ownerEmail?: string;
-}

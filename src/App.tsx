@@ -14,7 +14,6 @@ import { CustomersView } from './views/CustomersView';
 import { CommissionView } from './views/CommissionView';
 import { MarketShareView } from './views/MarketShareView';
 import { YearlyView } from './views/YearlyView';
-import { SyncView } from './views/SyncView';
 import { SettingsView } from './views/SettingsView';
 import { CatalogView } from './views/CatalogView';
 
@@ -29,7 +28,6 @@ import { ImportSalesModal } from './components/modals/ImportSalesModal';
 import { PwaInstallModal } from './components/modals/PwaInstallModal';
 import { AuditLogsModal } from './components/modals/AuditLogsModal';
 import { AiAssistantModal } from './components/modals/AiAssistantModal';
-import { GoogleSheetViewerModal } from './components/modals/GoogleSheetViewerModal';
 
 const AppContent: React.FC = () => {
   const { activeTab, isOnline, toastMessage, isAuthReady, isAuthenticated } = useApp();
@@ -66,8 +64,6 @@ const AppContent: React.FC = () => {
         return <MarketShareView />;
       case 'yearly':
         return <YearlyView />;
-      case 'sheets-sync':
-        return <SyncView />;
       case 'settings':
       case 'brand-settings':
         return <SettingsView />;
@@ -134,7 +130,6 @@ const AppContent: React.FC = () => {
       <PwaInstallModal />
       <AuditLogsModal />
       <AiAssistantModal />
-      <GoogleSheetViewerModal />
     </div>
   );
 };
