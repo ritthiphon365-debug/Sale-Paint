@@ -49,6 +49,7 @@ export class DataService {
   static async checkout(req: CheckoutRequest, idempotencyKey?: string) {
     if (this.isSupabasePrimary()) {
       const res = await SalesApi.checkoutSaleBill(req, idempotencyKey);
+      if (!res.success) throw new Error(res.error?.message || 'บันทึกการขายไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('sales', 'INSERT', req.items);
       return res;
     }
@@ -58,6 +59,7 @@ export class DataService {
   static async updateSale(id: string, partialSale: Partial<SaleItem>) {
     if (this.isSupabasePrimary()) {
       const res = await SalesApi.updateSale(id, partialSale);
+      if (!res.success) throw new Error(res.error?.message || 'อัปเดตรายการขายไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('sales', 'UPDATE', { id, ...partialSale });
       return res;
     }
@@ -67,6 +69,7 @@ export class DataService {
   static async deleteSale(id: string) {
     if (this.isSupabasePrimary()) {
       const res = await SalesApi.deleteSale(id);
+      if (!res.success) throw new Error(res.error?.message || 'ลบรายการขายไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('sales', 'DELETE', { id });
       return res;
     }
@@ -84,6 +87,7 @@ export class DataService {
   static async upsertProducts(products: ProductConfig[]) {
     if (this.isSupabasePrimary()) {
       const res = await ProductsApi.upsertProducts(products);
+      if (!res.success) throw new Error(res.error?.message || 'บันทึกสินค้าไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('products', 'UPDATE', products);
       return res;
     }
@@ -93,6 +97,7 @@ export class DataService {
   static async deleteProduct(id: string) {
     if (this.isSupabasePrimary()) {
       const res = await ProductsApi.deleteProduct(id);
+      if (!res.success) throw new Error(res.error?.message || 'ลบสินค้าไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('products', 'DELETE', { id });
       return res;
     }
@@ -110,6 +115,7 @@ export class DataService {
   static async upsertCatalog(items: CatalogItem[]) {
     if (this.isSupabasePrimary()) {
       const res = await CatalogApi.upsertCatalog(items);
+      if (!res.success) throw new Error(res.error?.message || 'บันทึกแคตตาล็อกไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('catalog_items', 'UPDATE', items);
       return res;
     }
@@ -119,6 +125,7 @@ export class DataService {
   static async deleteCatalogItem(id: string) {
     if (this.isSupabasePrimary()) {
       const res = await CatalogApi.deleteCatalogItem(id);
+      if (!res.success) throw new Error(res.error?.message || 'ลบแคตตาล็อกไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('catalog_items', 'DELETE', { id });
       return res;
     }
@@ -136,6 +143,7 @@ export class DataService {
   static async addStockIn(record: StockInRecord) {
     if (this.isSupabasePrimary()) {
       const res = await StockApi.addStockIn(record);
+      if (!res.success) throw new Error(res.error?.message || 'บันทึกรับสต็อกไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('stock_ins', 'INSERT', record);
       return res;
     }
@@ -145,6 +153,7 @@ export class DataService {
   static async bulkAddStockIn(records: StockInRecord[]) {
     if (this.isSupabasePrimary()) {
       const res = await StockApi.bulkAddStockIn(records);
+      if (!res.success) throw new Error(res.error?.message || 'บันทึกรับสต็อกไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('stock_ins', 'INSERT', records);
       return res;
     }
@@ -162,6 +171,7 @@ export class DataService {
   static async setSystemConfig(key: string, value: any) {
     if (this.isSupabasePrimary()) {
       const res = await ConfigApi.setConfig(key, value);
+      if (!res.success) throw new Error(res.error?.message || 'บันทึกการตั้งค่าไม่สำเร็จ');
       RealtimeService.broadcastLocalMutation('system_configs', 'UPDATE', { key, value });
       return res;
     }
