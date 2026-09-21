@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import {
   ProductConfig,
   SaleItem,
@@ -454,11 +454,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     syncCatalogAndProducts(updated, [item]);
     addAuditLog('Product Edit', `เพิ่มสินค้าในแคตตาล็อก: ${item.name} (${item.sku})`, 'success');
     showToast(`เพิ่มสินค้า ${item.name} ในแคตตาล็อกสำเร็จ`, 'success');
-
-    // Auto sync to Google Sheets if connected
-    if (googleConnected) {
-      GoogleSheetsService.pushCatalogToSheet(updated, `${brandSettings.brandName} Product Catalog`).catch(console.warn);
-    }
+    // หมายเหตุ: ไม่ push ไป Google Sheets ทันทีแล้ว — Google Sheets ใช้เป็นที่สำรองข้อมูลเป็นรอบ
+    // (ปุ่ม backup เอง หรือ auto-backup ตามเวลา) ไม่ใช่ real-time ต่อการบันทึกแต่ละครั้งอีกต่อไป
   };
 
   const updateCatalogItem = (item: CatalogItem) => {
@@ -505,9 +502,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addAuditLog('Product Edit', `นำเข้าไฟล์ Excel แทนที่แคตตาล็อกเดิมทั้งหมด ${newItems.length} รายการ`, 'info');
       showToast(`แทนที่ข้อมูลแคตตาล็อกสำเร็จ ${newItems.length} รายการ (ซิงก์ไปหน้าสต็อกอัตโนมัติ)`, 'success');
 
-      if (googleConnected) {
-        GoogleSheetsService.pushCatalogToSheet(newItems, `${brandSettings.brandName} Product Catalog`).catch(console.warn);
-      }
       return { added: newItems.length, replaced: catalogItems.length, skipped: 0 };
     } else {
       // Smart Auto-detect: Only add new items, preserve existing
@@ -542,9 +536,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addAuditLog('Product Edit', `เพิ่มสินค้าใหม่จากไฟล์ Excel ${toAdd.length} รายการ (พบรายการเดิมที่มีอยู่แล้ว ${skipped} รายการ)`, 'success');
       showToast(`เพิ่มสินค้าใหม่ ${toAdd.length} รายการ (ข้ามรายการเดิม ${skipped} รายการ, ซิงก์ไปหน้าสต็อกอัตโนมัติ)`, 'success');
 
-      if (googleConnected) {
-        GoogleSheetsService.pushCatalogToSheet(merged, `${brandSettings.brandName} Product Catalog`).catch(console.warn);
-      }
       return { added: toAdd.length, replaced: 0, skipped };
     }
   };
@@ -1902,6 +1893,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return getStoredData<string | null>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, null);
   });
 
+  // Auto-backup: สำรองข้อมูลทั้ง 5 แท็บไป Google Sheets เป็นรอบๆ โดยอัตโนมัติ ตราบใดที่แอปเปิดอยู่
+  // (ทำงานเฉพาะตอนเปิดแอปอยู่ในเบราว์เซอร์เท่านั้น — ถ้าปิดแอป/ปิดเครื่อง จะ backup รอบถัดไปหลังเปิดแอปใหม่)
+  // ปรับความถี่ได้ที่ AUTO_BACKUP_INTERVAL_MS ด้านล่าง (ค่าเริ่มต้น: ทุก 30 นาที)
+  const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
+  const syncAllTabsToGoogleRef = useRef<() => Promise<void>>();
+  useEffect(() => {
+    if (!googleWebhookUrl) return;
+    const timer = setInterval(() => {
+      syncAllTabsToGoogleRef.current?.().catch((err: any) => {
+        console.warn('[AutoBackup] Periodic Google Sheets backup failed:', err);
+      });
+    }, AUTO_BACKUP_INTERVAL_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleWebhookUrl]);
+
   // Multi-Device & Google Drive state
   const [isGoogleOAuthConnected, setIsGoogleOAuthConnected] = useState<boolean>(() => {
     return GoogleSheetsService.isTokenValid();
@@ -2409,6 +2416,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       throw err;
     }
   };
+  // เก็บฟังก์ชันเวอร์ชันล่าสุด (ที่มีข้อมูล state ล่าสุด) ไว้ให้ตัวจับเวลา auto-backup ด้านบนเรียกใช้
+  syncAllTabsToGoogleRef.current = syncAllTabsToGoogle;
 
   const exportAllTabsToExcel = () => {
     try {
