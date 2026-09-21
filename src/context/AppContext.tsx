@@ -575,7 +575,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.PRODUCTS, updated);
 
     if (dataBackend === 'supabase') {
-      DataService.upsertProducts([prod]).catch(console.warn);
+      DataService.upsertProducts([prod]).catch((err) => {
+        console.warn('[Supabase] Failed to sync product:', err);
+        showToast(`บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`, 'error');
+      });
       persistItemsToFirestore(productsCollectionRef, [prod]).catch(console.warn);
     } else {
       persistItemsToFirestore(productsCollectionRef, [prod])
@@ -599,7 +602,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.PRODUCTS, updated);
 
     if (dataBackend === 'supabase') {
-      DataService.upsertProducts([prod]).catch(console.warn);
+      DataService.upsertProducts([prod]).catch((err) => {
+        console.warn('[Supabase] Failed to sync product:', err);
+        showToast(`บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`, 'error');
+      });
       persistItemsToFirestore(productsCollectionRef, [prod]).catch(console.warn);
     } else {
       persistItemsToFirestore(productsCollectionRef, [prod])
@@ -624,7 +630,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.PRODUCTS, updated);
 
     if (dataBackend === 'supabase') {
-      DataService.deleteProduct(id).catch(console.warn);
+      DataService.deleteProduct(id).catch((err) => {
+        console.warn('[Supabase] Failed to delete product:', err);
+        showToast(`ลบในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`, 'error');
+      });
       deleteItemsFromFirestore(productsCollectionRef, [id]).catch(console.warn);
     } else {
       deleteItemsFromFirestore(productsCollectionRef, [id])
@@ -768,7 +777,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.STOCK_IN, updated);
 
     if (dataBackend === 'supabase') {
-      DataService.addStockIn(newRecord).catch(console.warn);
+      DataService.addStockIn(newRecord).catch((err) => {
+        console.warn('[Supabase] Failed to sync stock-in:', err);
+        showToast(`บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`, 'error');
+      });
       persistItemsToFirestore(stockInCollectionRef, [newRecord]).catch(console.warn);
     } else {
       persistItemsToFirestore(stockInCollectionRef, [newRecord])
@@ -797,7 +809,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.STOCK_IN, updated);
 
     if (dataBackend === 'supabase') {
-      DataService.bulkAddStockIn(newRecords).catch(console.warn);
+      DataService.bulkAddStockIn(newRecords).catch((err) => {
+        console.warn('[Supabase] Failed to sync stock-in batch:', err);
+        showToast(`บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`, 'error');
+      });
       persistItemsToFirestore(stockInCollectionRef, newRecords).catch(console.warn);
     } else {
       persistItemsToFirestore(stockInCollectionRef, newRecords)
@@ -998,7 +1013,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const firestoreSale = { ...updated, updatedAt: new Date().toISOString() };
 
     if (dataBackend === 'supabase') {
-      DataService.updateSale(updated.id, firestoreSale).catch(console.warn);
+      DataService.updateSale(updated.id, firestoreSale).catch((err) => {
+        console.warn('[Supabase] Failed to update sale:', err);
+        showToast(`แก้ไขในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`, 'error');
+      });
       setDoc(doc(db, 'sales', updated.id), firestoreSale, { merge: true }).catch(console.warn);
     } else {
       setDoc(doc(db, 'sales', updated.id), firestoreSale, { merge: true })
@@ -1023,7 +1041,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.SALES, newSales);
 
     if (dataBackend === 'supabase') {
-      DataService.deleteSale(saleId).catch(console.warn);
+      DataService.deleteSale(saleId).catch((err) => {
+        console.warn('[Supabase] Failed to delete sale:', err);
+        showToast(`ลบในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ: ${err.message || ''}`, 'error');
+      });
       deleteSalesFromFirestore([saleId]).catch(console.warn);
     } else {
       deleteSalesFromFirestore([saleId])
@@ -1118,10 +1139,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const unsub = RealtimeService.subscribe('sales', async () => {
         try {
           const s = await DataService.getSales();
-          if (s) {
-            setSales(s);
+          // Guard: an empty/stale result from a lagging read should never wipe out
+          // sales we already have locally (avoids using a stale closure value).
+          setSales((prev) => {
+            if (!s || (s.length === 0 && prev.length > 0)) return prev;
             setStoredData(StorageKeys.SALES, s);
-          }
+            return s;
+          });
         } catch (e) {
           console.warn('[Realtime] Sales refresh error:', e);
         }
@@ -1202,10 +1226,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const unsub = RealtimeService.subscribe('catalog_items', async () => {
         try {
           const items = await DataService.getCatalog();
-          if (items) {
-            setCatalogItems(items);
+          setCatalogItems((prev) => {
+            if (!items || (items.length === 0 && prev.length > 0)) return prev;
             setStoredData(StorageKeys.CATALOG_ITEMS, items);
-          }
+            return items;
+          });
         } catch (e) {
           console.warn('[Realtime] Catalog refresh error:', e);
         }
@@ -1240,10 +1265,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const unsub = RealtimeService.subscribe('products', async () => {
         try {
           const items = await DataService.getProducts();
-          if (items) {
-            setProducts(items);
+          setProducts((prev) => {
+            if (!items || (items.length === 0 && prev.length > 0)) return prev;
             setStoredData(StorageKeys.PRODUCTS, items);
-          }
+            return items;
+          });
         } catch (e) {
           console.warn('[Realtime] Products refresh error:', e);
         }
@@ -1278,10 +1304,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const unsub = RealtimeService.subscribe('stock_ins', async () => {
         try {
           const items = await DataService.getStockIns();
-          if (items) {
-            setStockIns(items);
+          setStockIns((prev) => {
+            if (!items || (items.length === 0 && prev.length > 0)) return prev;
             setStoredData(StorageKeys.STOCK_IN, items);
-          }
+            return items;
+          });
         } catch (e) {
           console.warn('[Realtime] Stock-ins refresh error:', e);
         }
