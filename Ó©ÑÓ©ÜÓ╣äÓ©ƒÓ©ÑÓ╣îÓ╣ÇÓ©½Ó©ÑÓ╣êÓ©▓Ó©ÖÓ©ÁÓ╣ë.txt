@@ -1,0 +1,5 @@
+ลบไฟล์เหล่านี้ออกจากโปรเจกต์:
+src/components/modals/GoogleAuthModal.tsx
+src/components/modals/GoogleSheetViewerModal.tsx
+src/services/googleSheetsService.ts
+src/views/SyncView.tsx
