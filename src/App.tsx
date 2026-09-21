@@ -1,5 +1,6 @@
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { LoginScreen } from './components/auth/LoginScreen';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNavigation } from './components/layout/MobileNavigation';
 import { MobileDrawer } from './components/layout/MobileDrawer';
@@ -31,7 +32,19 @@ import { AiAssistantModal } from './components/modals/AiAssistantModal';
 import { GoogleSheetViewerModal } from './components/modals/GoogleSheetViewerModal';
 
 const AppContent: React.FC = () => {
-  const { activeTab, isOnline, toastMessage } = useApp();
+  const { activeTab, isOnline, toastMessage, isAuthReady, isAuthenticated } = useApp();
+
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100">
+        <p className="text-sm text-slate-400">กำลังตรวจสอบสิทธิ์การเข้าใช้งาน...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
 
   const renderActiveView = () => {
     switch (activeTab) {
