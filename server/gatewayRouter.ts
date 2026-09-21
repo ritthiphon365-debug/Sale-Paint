@@ -11,6 +11,7 @@
 
 import { Router, Request, Response } from 'express';
 import { dualWriteSyncService } from './dualWriteSyncService';
+import { requireFirebaseAuth } from './gatewayAuth';
 
 export const gatewayRouter = Router();
 
@@ -40,6 +41,37 @@ gatewayRouter.get('/health', (req: Request, res: Response) => {
   });
 });
 
+// Every production data route requires a cryptographically verified Firebase ID token.
+gatewayRouter.use(requireFirebaseAuth);
+
+gatewayRouter.use((req: Request, res: Response, next) => {
+  if (!dualWriteSyncService.isLiveConnected()) {
+    return res.status(503).json({
+      success: false,
+      error: {
+        code: 'SUPABASE_NOT_CONNECTED',
+        message: 'Live Supabase is unavailable. Production API fails closed; mock storage is not used.',
+      },
+    });
+  }
+  return next();
+});
+
+function getLiveClientOrFail(res: Response) {
+  const client = dualWriteSyncService.getLiveClient();
+  if (!client) {
+    res.status(503).json({
+      success: false,
+      error: {
+        code: 'SUPABASE_NOT_CONNECTED',
+        message: 'Live Supabase is unavailable. Production API fails closed; mock storage is not used.',
+      },
+    });
+    return null;
+  }
+  return client;
+}
+
 // Realtime SSE Stream for multi-device clients
 gatewayRouter.get('/realtime/stream', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -58,21 +90,15 @@ gatewayRouter.get('/realtime/stream', (req: Request, res: Response) => {
 // 2. Sales Endpoints
 gatewayRouter.get('/sales', async (req: Request, res: Response) => {
   try {
-    const liveClient = (dualWriteSyncService as any).liveClient;
-    if (liveClient) {
-      const { data, error } = await liveClient
-        .from('sales')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(2000);
-      if (!error && data) {
-        return res.json({ success: true, data });
-      }
-    }
-
-    // Fallback to durable mock store
-    const sales = (dualWriteSyncService as any).mockDb?.sales || [];
-    return res.json({ success: true, data: sales });
+    const liveClient = getLiveClientOrFail(res);
+    if (!liveClient) return;
+    const { data, error } = await liveClient
+      .from('sales')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(2000);
+    if (error) throw error;
+    return res.json({ success: true, data });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -149,15 +175,11 @@ gatewayRouter.delete('/sales/:id', async (req: Request, res: Response) => {
 // 3. Products Endpoints
 gatewayRouter.get('/products', async (req: Request, res: Response) => {
   try {
-    const liveClient = (dualWriteSyncService as any).liveClient;
-    if (liveClient) {
-      const { data, error } = await liveClient.from('products').select('*').order('name');
-      if (!error && data) {
-        return res.json({ success: true, data });
-      }
-    }
-    const products = (dualWriteSyncService as any).mockDb?.products || [];
-    return res.json({ success: true, data: products });
+    const liveClient = getLiveClientOrFail(res);
+    if (!liveClient) return;
+    const { data, error } = await liveClient.from('products').select('*').order('name');
+    if (error) throw error;
+    return res.json({ success: true, data });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -196,15 +218,11 @@ gatewayRouter.delete('/products/:id', async (req: Request, res: Response) => {
 // 4. Catalog Endpoints
 gatewayRouter.get('/catalog', async (req: Request, res: Response) => {
   try {
-    const liveClient = (dualWriteSyncService as any).liveClient;
-    if (liveClient) {
-      const { data, error } = await liveClient.from('catalog_items').select('*').order('name');
-      if (!error && data) {
-        return res.json({ success: true, data });
-      }
-    }
-    const catalog = (dualWriteSyncService as any).mockDb?.catalogItems || [];
-    return res.json({ success: true, data: catalog });
+    const liveClient = getLiveClientOrFail(res);
+    if (!liveClient) return;
+    const { data, error } = await liveClient.from('catalog_items').select('*').order('name');
+    if (error) throw error;
+    return res.json({ success: true, data });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -243,15 +261,11 @@ gatewayRouter.delete('/catalog/:id', async (req: Request, res: Response) => {
 // 5. Stock Endpoints
 gatewayRouter.get('/stock/stock-ins', async (req: Request, res: Response) => {
   try {
-    const liveClient = (dualWriteSyncService as any).liveClient;
-    if (liveClient) {
-      const { data, error } = await liveClient.from('stock_ins').select('*').order('date', { ascending: false });
-      if (!error && data) {
-        return res.json({ success: true, data });
-      }
-    }
-    const stockIns = (dualWriteSyncService as any).mockDb?.stockIns || [];
-    return res.json({ success: true, data: stockIns });
+    const liveClient = getLiveClientOrFail(res);
+    if (!liveClient) return;
+    const { data, error } = await liveClient.from('stock_ins').select('*').order('date', { ascending: false });
+    if (error) throw error;
+    return res.json({ success: true, data });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -290,21 +304,26 @@ gatewayRouter.post('/stock/bulk-stock-in', async (req: Request, res: Response) =
 gatewayRouter.get('/stock/variant-balance', async (req: Request, res: Response) => {
   try {
     const { productId, size, base } = req.query as { productId: string; size: string; base?: string };
-    const mockDb = (dualWriteSyncService as any).mockDb;
-    
-    // Find initial stock from product
-    const product = mockDb?.products?.find((p: any) => p.id === productId);
+    const liveClient = getLiveClientOrFail(res);
+    if (!liveClient) return;
+    const { data: products, error: productError } = await liveClient.from('products').select('id,initial_stock').eq('id', productId).limit(1);
+    if (productError) throw productError;
+    const product = products?.[0];
     const key = `${size}_${base || 'A'}`;
     const initialStock = Number(product?.initial_stock?.[key] ?? product?.initial_stock?.[size] ?? 0);
 
-    // Sum stock ins
-    const totalStockIn = (mockDb?.stockIns || [])
-      .filter((s: any) => s.product_id === productId && s.size === size && (s.base === base || (!s.base && !base)))
+    const { data: stockIns, error: stockError } = await liveClient
+      .from('stock_ins').select('quantity,product_id,size,base').eq('product_id', productId).eq('size', size);
+    if (stockError) throw stockError;
+    const totalStockIn = (stockIns || [])
+      .filter((s: any) => s.base === base || (!s.base && !base))
       .reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
 
-    // Sum sold
-    const totalSold = (mockDb?.sales || [])
-      .filter((s: any) => s.product_id === productId && s.size === size && (s.base === base || (!s.base && !base)))
+    const { data: sales, error: salesError } = await liveClient
+      .from('sales').select('quantity,product_id,size,base').eq('product_id', productId).eq('size', size);
+    if (salesError) throw salesError;
+    const totalSold = (sales || [])
+      .filter((s: any) => s.base === base || (!s.base && !base))
       .reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
 
     const balance = initialStock + totalStockIn - totalSold;
@@ -318,9 +337,11 @@ gatewayRouter.get('/stock/variant-balance', async (req: Request, res: Response) 
 gatewayRouter.get('/config/:key', async (req: Request, res: Response) => {
   try {
     const key = req.params.key;
-    const mockDb = (dualWriteSyncService as any).mockDb;
-    const configVal = mockDb?.systemConfigs?.[key] || null;
-    return res.json({ success: true, config: { key, value: configVal } });
+    const liveClient = getLiveClientOrFail(res);
+    if (!liveClient) return;
+    const { data, error } = await liveClient.from('system_configs').select('*').eq('key', key).limit(1);
+    if (error) throw error;
+    return res.json({ success: true, config: data?.[0] || null });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -333,7 +354,7 @@ gatewayRouter.put('/config/:key', async (req: Request, res: Response) => {
     const idempotencyKey = `cfg-${key}-${Date.now()}`;
     const result = await dualWriteSyncService.executeDualWrite('SET_SYSTEM_CONFIG', idempotencyKey, {
       key,
-      config: value,
+      value,
     });
 
     broadcastRealtimeEvent('system_configs', 'UPDATE', { key, value });
