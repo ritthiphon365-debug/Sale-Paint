@@ -7,7 +7,7 @@ import {
 import { useApp } from '../../context/AppContext';
 
 export const TargetModal: React.FC = () => {
-  const { modalOpen, setModalOpen, commissionConfig, updateCommissionConfig } = useApp();
+  const { modalOpen, setModalOpen, commissionConfig, updateCommissionConfig, activeMonth, updateYearTarget } = useApp();
   const [monthlyTarget, setMonthlyTarget] = useState(commissionConfig.monthlyTarget);
   const [headcount, setHeadcount] = useState(commissionConfig.headcount);
 
@@ -15,6 +15,16 @@ export const TargetModal: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    // Keep the Dashboard target and the Commission target source in sync.
+    // CommissionView resolves its monthly target from yearTargets first.
+    const [yearStr, monthStr] = activeMonth.split('-');
+    const targetYear = Number(yearStr);
+    const targetMonth = Number(monthStr);
+
+    if (Number.isFinite(targetYear) && Number.isFinite(targetMonth) && targetMonth >= 1 && targetMonth <= 12) {
+      updateYearTarget(targetMonth, targetYear, monthlyTarget);
+    }
+
     updateCommissionConfig({
       ...commissionConfig,
       monthlyTarget,
