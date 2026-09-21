@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
-import { SaleItem, ProductConfig, StockInRecord, CloudSpreadsheetInfo } from '../types';
+import { SaleItem, ProductConfig, StockInRecord } from '../types';
 
 // Environment variable retrieval
 const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : {};
@@ -40,7 +40,7 @@ export function getSupabase(): SupabaseClient | null {
 
 /**
  * Phase 1 Auth Foundation:
- * Provides standard authentication helper signatures compatible with Google Sign-In.
+ * Email/password authentication helpers (Google Sign-In removed).
  * Note: Firebase Auth remains active and unchanged in Phase 1.
  */
 export const SupabaseAuthFoundation = {
@@ -55,21 +55,6 @@ export const SupabaseAuthFoundation = {
     }
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     return { user: data?.user, error };
-  },
-
-  signInWithGoogle: async (): Promise<{ url?: string; error?: any }> => {
-    const client = getSupabase();
-    if (!client) {
-      return { error: new Error('Supabase is not configured yet. Using Firebase Auth.') };
-    }
-    const { data, error } = await client.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-        scopes: 'email profile https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets',
-      },
-    });
-    return { url: data?.url ?? undefined, error };
   },
 
   signOut: async (): Promise<{ error?: any }> => {
@@ -156,22 +141,6 @@ export const SupabaseRealtimeFoundation = {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'stock_ins' },
         (payload) => onStockInInsert?.(payload.new as StockInRecord)
-      )
-      .subscribe();
-  },
-
-  subscribeToSystemConfig: (
-    onConfigChange?: (config: CloudSpreadsheetInfo) => void
-  ): RealtimeChannel | null => {
-    const client = getSupabase();
-    if (!client) return null;
-
-    return client
-      .channel('public:system_configs')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'system_configs', filter: 'key=eq.google_sheets' },
-        (payload) => onConfigChange?.((payload.new as any)?.value as CloudSpreadsheetInfo)
       )
       .subscribe();
   },
