@@ -1,16 +1,35 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write for system config so all links (preview and deployed) sync Google Sheets config
+    // Phase 4.1 hardening: Firestore remains available for migration/rollback,
+    // but anonymous and unauthenticated browser sessions may not access data.
+    function isAuthenticatedUser() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
     match /system_config/{document} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticatedUser();
     }
-    // Allow sales access
+
     match /sales/{document} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticatedUser();
     }
+
+    match /products/{document} {
+      allow read, write: if isAuthenticatedUser();
+    }
+
+    match /catalog_items/{document} {
+      allow read, write: if isAuthenticatedUser();
+    }
+
+    match /stock_ins/{document} {
+      allow read, write: if isAuthenticatedUser();
+    }
+
     match /{document=**} {
-      allow read, write: if request.auth != null || true;
+      allow read, write: if isAuthenticatedUser();
     }
   }
 }
