@@ -51,6 +51,10 @@ import {
   setDoc,
   onSnapshot,
   getDocFromServer,
+  collection,
+  getDocs,
+  writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import {
   computeStockInventory,
@@ -566,6 +570,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('ลบรายการสินค้าเรียบร้อย', 'info');
   };
 
+  // Firestore is the shared source of truth for sales. LocalStorage is only a cache.
+  const salesCollectionRef = collection(db, 'sales');
+
+  const persistSalesToFirestore = async (items: SaleItem[]) => {
+    // Firestore batches are limited to 500 writes. Chunk safely for imports.
+    for (let i = 0; i < items.length; i += 450) {
+      const batch = writeBatch(db);
+      items.slice(i, i + 450).forEach((item) => {
+        batch.set(doc(db, 'sales', item.id), item);
+      });
+      await batch.commit();
+    }
+  };
+
+  const deleteSalesFromFirestore = async (ids: string[]) => {
+    for (let i = 0; i < ids.length; i += 450) {
+      const batch = writeBatch(db);
+      ids.slice(i, i + 450).forEach((id) => batch.delete(doc(db, 'sales', id)));
+      await batch.commit();
+    }
+  };
+
   // Sales Records
   const [sales, setSales] = useState<SaleItem[]>(() => {
     if (hasStoredKey(StorageKeys.SALES)) {
@@ -691,6 +717,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setStoredData(StorageKeys.SALES, updatedSales);
     setCart([]);
 
+    // Persist each sale as its own Firestore document so multiple devices
+    // can create/update sales concurrently without overwriting each other.
+    persistSalesToFirestore(newSaleItems).catch((err) => {
+      console.error('[Firestore] Failed to save sale:', err);
+      showToast('บันทึกในเครื่องแล้ว แต่ส่งข้อมูลไปฐานข้อมูลกลางไม่สำเร็จ', 'error');
+    });
+
     const billTotal = newSaleItems.reduce((acc, i) => acc + i.total, 0);
     addAuditLog('Add Sale', `เปิดบิล ${billId} (${customerName || 'ลูกค้าทั่วไป'}) ยอดรวม ฿${billTotal.toLocaleString()}`, 'success');
 
@@ -734,6 +767,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newSales = sales.map((s) => (s.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : s));
     setSales(newSales);
     setStoredData(StorageKeys.SALES, newSales);
+    const firestoreSale = { ...updated, updatedAt: new Date().toISOString() };
+    setDoc(doc(db, 'sales', updated.id), firestoreSale, { merge: true }).catch((err) => {
+      console.error('[Firestore] Failed to update sale:', err);
+      showToast('แก้ไขในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+    });
     addAuditLog('Edit Sale', `แก้ไขรายการขาย #${updated.id} (${updated.productName})`, 'info');
     showToast('แก้ไขข้อมูลการขายสำเร็จ', 'success');
   };
@@ -743,6 +781,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newSales = sales.filter((s) => s.id !== saleId);
     setSales(newSales);
     setStoredData(StorageKeys.SALES, newSales);
+    deleteSalesFromFirestore([saleId]).catch((err) => {
+      console.error('[Firestore] Failed to delete sale:', err);
+      showToast('ลบในเครื่องแล้ว แต่ลบจากฐานข้อมูลกลางไม่สำเร็จ', 'error');
+    });
     addAuditLog('Delete Sale', `ลบรายการขาย: ${target?.productName} บิล ${target?.billId}`, 'danger');
     showToast('ลบรายการขายเรียบร้อยแล้ว', 'info');
   };
@@ -755,8 +797,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (mode === 'replace') {
       const sorted = [...importedItems].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const previousIds = sales.map((s) => s.id);
       setSales(sorted);
       setStoredData(StorageKeys.SALES, sorted);
+      Promise.all([deleteSalesFromFirestore(previousIds), persistSalesToFirestore(sorted)]).catch((err) => {
+        console.error('[Firestore] Failed to replace sales:', err);
+        showToast('นำเข้าในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+      });
       addAuditLog(
         'Import Excel',
         `แทนที่ประวัติยอดขายทั้งหมดด้วยไฟล์ Excel จากแอปเดิม จำนวน ${importedItems.length} รายการ`,
@@ -786,6 +833,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const merged = [...toAdd, ...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setSales(merged);
       setStoredData(StorageKeys.SALES, merged);
+      persistSalesToFirestore(toAdd).catch((err) => {
+        console.error('[Firestore] Failed to append imported sales:', err);
+        showToast('นำเข้าในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+      });
 
       addAuditLog(
         'Import Excel',
@@ -799,6 +850,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { added: toAdd.length, replaced: 0, skipped };
     }
   };
+
+  // Realtime shared sales: every device receives sales changes immediately.
+  useEffect(() => {
+    let active = true;
+    let unsubscribe: (() => void) | null = null;
+
+    const startRealtimeSales = async () => {
+      try {
+        const migrationRef = doc(db, 'system_config', 'sales_migration');
+        const localSales = getStoredData<SaleItem[]>(StorageKeys.SALES, []);
+        const cloudBeforeMigration = await getDocs(salesCollectionRef);
+
+        // One-time migration: preserve the first device's existing local sales
+        // when the shared Firestore collection is still empty.
+        if (cloudBeforeMigration.empty && localSales.length > 0) {
+          const claimed = await runTransaction(db, async (tx) => {
+            const snap = await tx.get(migrationRef);
+            if (snap.exists()) return false;
+            tx.set(migrationRef, {
+              initialized: true,
+              migratedAt: new Date().toISOString(),
+              count: localSales.length,
+            });
+            return true;
+          });
+          if (claimed) await persistSalesToFirestore(localSales);
+        } else if (!cloudBeforeMigration.empty) {
+          // Mark migration complete if the cloud database already contains sales.
+          await setDoc(migrationRef, { initialized: true, migratedAt: new Date().toISOString() }, { merge: true });
+        }
+
+        if (!active) return;
+        unsubscribe = onSnapshot(
+          salesCollectionRef,
+          (snapshot) => {
+            if (!active) return;
+            const cloudSales = snapshot.docs
+              .map((item) => item.data() as SaleItem)
+              .filter((item) => item?.id)
+              .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+
+            // Firestore is now authoritative, including an empty collection
+            // after the last sale is deleted on another device.
+            setSales(cloudSales);
+            setStoredData(StorageKeys.SALES, cloudSales);
+          },
+          (err) => console.warn('[Firestore] Sales realtime listener error:', err)
+        );
+      } catch (err) {
+        console.warn('[Firestore] Sales realtime setup skipped:', err);
+      }
+    };
+
+    startRealtimeSales();
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, []);
 
   // Computed Stock
   const computedStock = useMemo(() => {
