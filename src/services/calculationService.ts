@@ -1,4 +1,5 @@
 import { SaleItem, StockInRecord, ProductConfig, StockItemComputed, CustomerCRM, FollowUpStatus, CommissionConfig, GallonIncentiveRule, SizeOption } from '../types';
+import { GATE_PERCENT, GALLON_CAP_PER_PERSON, LEGACY_MAIN_TABLE, calcGallonPayout, calcLegacyCommission } from './commissionLegacy';
 
 export function computeStockInventory(
   products: ProductConfig[],
@@ -200,169 +201,75 @@ export function computeCommission(
   config: CommissionConfig,
   gallonRules: GallonIncentiveRule[]
 ) {
-  // Filter sales for the specific month/year
-  const monthSales = sales.filter((s) => {
-    const d = new Date(s.date);
-    return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
-  });
+  const monthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+  const monthSales = sales.filter((s) => s.date.slice(0, 7) === monthKey);
 
   const totalSalesAmount = monthSales.reduce((acc, s) => acc + s.total, 0);
   const totalQuantity = monthSales.reduce((acc, s) => acc + s.quantity, 0);
   const target = config.monthlyTarget || 500000;
-  const achievementPercent = target > 0 ? (totalSalesAmount / target) * 100 : 0;
+  const legacy = calcLegacyCommission(target, totalSalesAmount, config.headcount);
+  const achievementPercent = legacy.pct;
 
-  // 1. Main Step Commission from highest achieved tier (ยอดขายกี่ % ได้เงินเท่าไหร่)
-  let mainCommission = 0;
-  let activeTierPercent = 0;
-  const sortedTiers = [...config.tiers].sort((a, b) => a.achievementPercent - b.achievementPercent);
-  for (const tier of sortedTiers) {
-    if (achievementPercent >= tier.achievementPercent) {
-      mainCommission = tier.rewardAmount;
-      activeTierPercent = tier.achievementPercent;
-    }
-  }
+  const activeTier = [...LEGACY_MAIN_TABLE].reverse().find((t) => achievementPercent >= t.pct);
+  const nextLegacyTier = LEGACY_MAIN_TABLE.find((t) => t.pct > achievementPercent);
+  const nextTier = nextLegacyTier
+    ? { achievementPercent: nextLegacyTier.pct, rewardAmount: nextLegacyTier.amt }
+    : undefined;
 
-  // Next tier to motivate PC
-  const nextTier = sortedTiers.find((t) => t.achievementPercent > achievementPercent);
-
-  // 2. Special Commission Bands
-  let specialCommission = 0;
-  for (const band of config.specialBands) {
-    if (totalSalesAmount >= band.minSales && totalSalesAmount <= band.maxSales) {
-      specialCommission += band.rewardAmount;
-    }
-  }
-
-  // 3. Per Head Commission
-  const headcount = Math.max(1, config.headcount);
-  const salesPerHead = Math.round(totalSalesAmount / headcount);
-  const perHeadCommission = headcount * (config.rewardPerHead || 1500);
-
-  // 4. เงินรางวัลพิเศษรายชิ้น (Product-specific Incentive Engine พร้อมเงื่อนไข % เป้าหมาย)
-  let gallonIncentiveTotal = 0;
-  let gallonIncentivePotentialTotal = 0;
+  let gallonSubtotal = 0;
   const ruleBreakdowns: RuleRewardBreakdown[] = [];
+  const activeRules = gallonRules.filter((r) => r.enabled && (r.ruleType === 'per_unit' || r.ruleType === 'lump_sum_qty'));
 
-  const activeRules = gallonRules.filter((r) => r.enabled);
+  const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase();
+  const matchesSelection = (value: unknown, selected?: string[]) => {
+    if (!selected || selected.length === 0 || selected.includes('__ALL__')) return true;
+    return selected.some((item) => normalize(item) === normalize(value));
+  };
 
   activeRules.forEach((rule) => {
-    // Filter matching sales for this rule
+    // Product name is mandatory for matching; matching is exact, case-insensitive, trimmed.
+    if (!rule.productName || !rule.productName.trim()) return;
+    const productName = normalize(rule.productName);
     const matchingSales = monthSales.filter((sale) => {
-      // 1. Match Product Name (if specified)
-      if (rule.productName && rule.productName.trim() !== '') {
-        const p1 = (sale.productName || '').toLowerCase().trim();
-        const p2 = rule.productName.toLowerCase().trim();
-        if (!p1.includes(p2) && !p2.includes(p1)) return false;
-      }
-
-      // 2. Match SKU (if specified)
-      if (rule.sku && sale.sku !== rule.sku) return false;
-
-      // 3. Match Sizes (if specified)
-      if (Array.isArray(rule.selectedSizes) && rule.selectedSizes.length > 0) {
-        if (!sale.size || !rule.selectedSizes.includes(sale.size)) return false;
-      } else if (rule.size && sale.size !== rule.size) {
-        return false;
-      }
-
-      // 4. Match Bases (if specified)
-      if (Array.isArray(rule.selectedBases) && rule.selectedBases.length > 0) {
-        if (!sale.base || !rule.selectedBases.includes(sale.base)) return false;
-      } else if (rule.base && sale.base !== rule.base) {
-        return false;
-      }
-
-      // 5. Match Film Colors (if specified)
-      if (Array.isArray(rule.selectedFilmColors) && rule.selectedFilmColors.length > 0) {
-        if (!sale.filmColor || !rule.selectedFilmColors.includes(sale.filmColor)) return false;
-      }
-
-      // 6. Match Color Codes (if specified)
-      if (Array.isArray(rule.selectedColorCodes) && rule.selectedColorCodes.length > 0) {
-        if (!sale.colorCode || !rule.selectedColorCodes.includes(sale.colorCode)) return false;
-      }
-
+      if (normalize(sale.productName) !== productName) return false;
+      if (rule.sku && normalize(sale.sku) !== normalize(rule.sku)) return false;
+      if (!matchesSelection(sale.size, rule.selectedSizes ?? (rule.size ? [rule.size] : undefined))) return false;
+      if (!matchesSelection(sale.base, rule.selectedBases ?? (rule.base ? [rule.base] : undefined))) return false;
+      if (!matchesSelection(sale.filmColor, rule.selectedFilmColors)) return false;
+      if (!matchesSelection(sale.colorCode, rule.selectedColorCodes)) return false;
       return true;
     });
 
     const matchedQuantity = matchingSales.reduce((acc, s) => acc + s.quantity, 0);
     const matchedRevenue = matchingSales.reduce((acc, s) => acc + s.total, 0);
-
     let potentialAmount = 0;
-    let isRuleQualified = false;
-    let matchedDescription = 'จ่ายเงินรางวัลรายถัง';
+    let matchedDescription = '';
 
     if (rule.ruleType === 'per_unit') {
-      // จ่ายรายถังทันที เช่น ถังละ 50 บาท
       potentialAmount = matchedQuantity * rule.reward;
-      isRuleQualified = matchedQuantity > 0;
       matchedDescription = `ถังละ ฿${rule.reward.toLocaleString()} ทุกชิ้นที่ขายได้`;
-    } else if (rule.ruleType === 'lump_sum_qty') {
-      // ขายรวมกันให้ได้ X ถัง ถึงจะจ่าย Y บาท (เช่น ครบ 4 ถัง จ่าย 200)
-      const minQty = rule.minQuantity || 1;
-      const bundleCount = Math.floor(matchedQuantity / minQty);
-      potentialAmount = bundleCount * rule.reward;
-      isRuleQualified = matchedQuantity >= minQty;
-      matchedDescription = `ซื้อครบทุกๆ ${minQty} ถัง รับเงินก้อน ฿${rule.reward.toLocaleString()}`;
-    } else if (rule.ruleType === 'threshold_revenue_per_bucket') {
-      // ขายรวมกันได้ยอด X บาท ถึงจะจ่ายตามรายถังที่ขายไป ถังละ Y บาท
-      const minRev = rule.minRevenue || 0;
-      if (matchedRevenue >= minRev && minRev > 0) {
-        potentialAmount = matchedQuantity * rule.reward;
-        isRuleQualified = true;
-      } else {
-        isRuleQualified = false;
-        potentialAmount = 0;
-      }
-      matchedDescription = `ยอดขายขั้นต่ำ ฿${minRev.toLocaleString()} (ได้ถังละ ฿${rule.reward})`;
-    } else if (rule.ruleType === 'min_qty_per_unit') {
-      const minQty = rule.minQuantity || 1;
-      if (matchedQuantity >= minQty) {
-        potentialAmount = rule.reward;
-        isRuleQualified = true;
-      }
-      matchedDescription = `ขายครบ ${minQty} ถัง รับ ฿${rule.reward.toLocaleString()}`;
-    } else if (rule.ruleType === 'size_standard') {
-      // Default standard size incentives
-      matchingSales.forEach((s) => {
-        const stdReward = s.size === '5GL' ? 50 : s.size === '2.5GL' ? 30 : s.size === '1GL' ? 15 : 5;
-        potentialAmount += stdReward * s.quantity;
-      });
-      isRuleQualified = matchedQuantity > 0;
-      matchedDescription = `จ่ายตามขนาดบรรจุมาตรฐาน (5GL=50, 2.5GL=30, 1GL=15, 1/4GL=5)`;
+    } else {
+      const minQty = rule.minQuantity ?? 0;
+      if (minQty > 0) potentialAmount = Math.floor(matchedQuantity / minQty) * rule.reward;
+      matchedDescription = minQty > 0
+        ? `ครบ ${minQty} ถัง รับเงินก้อน ฿${rule.reward.toLocaleString()}`
+        : 'กำหนดจำนวนขั้นต่ำต่อชุดไม่ถูกต้อง';
     }
 
-    // Determine Required Target Achievement %: Rule-specific priority over Global Config
-    const requiredTargetPercent =
-      rule.minTargetAchievementPercent !== undefined && rule.minTargetAchievementPercent > 0
-        ? rule.minTargetAchievementPercent
-        : config.requireTargetAchievementForGallon && (config.minTargetAchievementForGallon || 0) > 0
-        ? (config.minTargetAchievementForGallon || 0)
-        : 0;
-
-    const isTargetAchieved = requiredTargetPercent === 0 || achievementPercent >= requiredTargetPercent;
+    const isTargetAchieved = achievementPercent >= GATE_PERCENT;
     const earnedAmount = isTargetAchieved ? potentialAmount : 0;
-    const isQualified = isRuleQualified && isTargetAchieved;
+    const isQualified = matchedQuantity > 0 && potentialAmount > 0 && isTargetAchieved;
+    const gapToUnlock = Math.max(0, Math.ceil((target * GATE_PERCENT) / 100 - totalSalesAmount));
+    const targetGateMessage = isTargetAchieved
+      ? `ผ่านเกณฑ์ยอดรวม ${GATE_PERCENT}% ของเป้าแล้ว`
+      : `ต้องได้ยอดรวมถึง ${GATE_PERCENT}% ของเป้า ขาดอีก ฿${gapToUnlock.toLocaleString()}`;
 
-    let targetGateMessage = '';
-    if (requiredTargetPercent > 0) {
-      if (isTargetAchieved) {
-        targetGateMessage = `ผ่านเกณฑ์ยอดรวม ${requiredTargetPercent}% ของเป้าแล้ว (ยอดปัจจุบัน ${achievementPercent.toFixed(1)}%)`;
-      } else {
-        const targetAmountNeeded = (target * requiredTargetPercent) / 100;
-        const gapToUnlock = Math.max(0, Math.ceil(targetAmountNeeded - totalSalesAmount));
-        targetGateMessage = `ต้องได้ยอดรวมถึง ${requiredTargetPercent}% ของเป้า (ปัจจุบัน ${achievementPercent.toFixed(1)}%) ขาดอีก ฿${gapToUnlock.toLocaleString()}`;
-      }
-    }
-
-    gallonIncentivePotentialTotal += potentialAmount;
-    gallonIncentiveTotal += earnedAmount;
-
+    gallonSubtotal += potentialAmount;
     ruleBreakdowns.push({
       ruleId: rule.id,
       ruleName: rule.name,
       matchedDescription,
-      productName: rule.productName || 'สินค้าที่ร่วมรายการ',
+      productName: rule.productName,
       ruleType: rule.ruleType,
       matchedQuantity,
       matchedRevenue,
@@ -371,39 +278,42 @@ export function computeCommission(
       potentialAmount,
       rewardRate: rule.reward,
       targetQuantity: rule.minQuantity,
-      targetRevenue: rule.minRevenue,
-      requiredTargetPercent: requiredTargetPercent > 0 ? requiredTargetPercent : undefined,
+      requiredTargetPercent: GATE_PERCENT,
       isTargetAchieved,
-      targetGateMessage: targetGateMessage || undefined,
+      targetGateMessage,
     });
   });
 
-  const grandTotalCommission = mainCommission + specialCommission + perHeadCommission + gallonIncentiveTotal;
-  const globalTargetPercent = config.minTargetAchievementForGallon || 0;
-  const isGallonTargetUnlocked =
-    !config.requireTargetAchievementForGallon || globalTargetPercent === 0 || achievementPercent >= globalTargetPercent;
-  const gapToGallonUnlock =
-    config.requireTargetAchievementForGallon && globalTargetPercent > 0
-      ? Math.max(0, Math.ceil((target * globalTargetPercent) / 100 - totalSalesAmount))
-      : 0;
+  const gallonPayout = calcGallonPayout(gallonSubtotal, legacy.headcount);
+  const gallonIncentiveTotal = achievementPercent >= GATE_PERCENT ? gallonPayout.paidTotal : 0;
+  const gallonIncentivePotentialTotal = gallonPayout.paidTotal;
+  const gallonCapApplied = gallonPayout.perPersonRaw > GALLON_CAP_PER_PERSON;
+  const globalTargetPercent = GATE_PERCENT;
+  const isGallonTargetUnlocked = achievementPercent >= GATE_PERCENT;
+  const gapToGallonUnlock = Math.max(0, Math.ceil((target * GATE_PERCENT) / 100 - totalSalesAmount));
+  const grandTotalCommission = legacy.main + legacy.special + legacy.perHead + gallonIncentiveTotal;
 
   return {
     monthSalesCount: monthSales.length,
     totalSalesAmount,
     totalQuantity,
     target,
-    achievementPercent: Number(achievementPercent.toFixed(1)),
+    achievementPercent,
     gap: Math.max(0, target - totalSalesAmount),
     surplus: Math.max(0, totalSalesAmount - target),
-    mainCommission,
-    activeTierPercent,
+    mainCommission: legacy.main,
+    activeTierPercent: activeTier?.pct ?? 0,
     nextTier,
-    specialCommission,
-    perHeadCommission,
-    headcount,
-    salesPerHead,
+    specialCommission: legacy.special,
+    perHeadCommission: legacy.perHead,
+    headcount: legacy.headcount,
+    salesPerHead: legacy.perPersonSales,
     gallonIncentiveTotal,
     gallonIncentivePotentialTotal,
+    gallonSubtotal,
+    gallonPerPersonRaw: gallonPayout.perPersonRaw,
+    gallonPerPersonCapped: gallonPayout.perPersonCapped,
+    gallonCapApplied,
     isGallonTargetUnlocked,
     globalTargetPercent,
     gapToGallonUnlock,
