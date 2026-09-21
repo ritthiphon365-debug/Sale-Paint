@@ -32,12 +32,10 @@ export class DataService {
   }
 
   static setBackend(target: DataBackendType) {
-    const configured = this.backend;
-    if (target !== configured) {
-      console.warn(`[DataService] Runtime backend switching is disabled. Configured backend remains: ${configured}`);
-      return false;
+    // Backend selection is build/deployment configuration, never client-controlled.
+    if (target !== this.backend) {
+      console.warn('[DataService] Ignoring client-side backend switch. Set VITE_DATA_BACKEND at deployment time.');
     }
-    return true;
   }
 
   // --- SALES ---

@@ -1,9 +1,8 @@
 /**
  * SALE PAINT — API CLIENT
- * Secure HTTP communication layer between UI and Cloudflare/Supabase Gateway.
- * Attaches Firebase ID tokens for authorization without leaking secrets.
+ * Production authentication: Firebase ID token during the migration window.
+ * No localStorage/session-string fallback is permitted.
  */
-
 import { auth } from '../../lib/firebase';
 import { ApiResponse } from './types';
 
@@ -17,137 +16,64 @@ export class ApiClient {
     };
 
     const currentUser = auth.currentUser;
-    if (!currentUser) {
-      throw new Error('AUTH_REQUIRED: Please sign in before using the production data API.');
+    if (!currentUser || currentUser.isAnonymous) {
+      throw new Error('AUTHENTICATION_REQUIRED');
     }
 
-    const idToken = await currentUser.getIdToken();
-    if (!idToken) {
-      throw new Error('AUTH_REQUIRED: Firebase ID token is unavailable.');
-    }
-    headers['Authorization'] = `Bearer ${idToken}`;
-
+    const idToken = await currentUser.getIdToken(true);
+    if (!idToken) throw new Error('AUTHENTICATION_REQUIRED');
+    headers.Authorization = `Bearer ${idToken}`;
     return headers;
+  }
+
+  private static async request<T>(endpoint: string, init: RequestInit): Promise<ApiResponse<T>> {
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, { ...init, credentials: 'same-origin' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error?.message || `HTTP ${res.status}: Request failed`);
+      }
+      return body;
+    } catch (err: any) {
+      return { success: false, error: { code: 'API_ERROR', message: err?.message || 'API request failed', timestamp: new Date().toISOString() } };
+    }
   }
 
   static async get<T = any>(endpoint: string, params?: Record<string, string>): Promise<ApiResponse<T>> {
     try {
       const url = new URL(`${API_BASE}${endpoint}`, window.location.origin);
-      if (params) {
-        Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
-      }
-
+      Object.entries(params || {}).forEach(([k, v]) => url.searchParams.append(k, v));
       const headers = await this.getAuthHeaders();
-      const res = await fetch(url.toString(), { credentials: 'same-origin', headers, method: 'GET' });
-      const body = await res.json();
-
-      if (!res.ok) {
-        throw new Error(body?.error?.message || `HTTP ${res.status}: Failed to fetch ${endpoint}`);
-      }
-
-      return body;
+      return await this.request<T>(url.pathname + url.search, { method: 'GET', headers });
     } catch (err: any) {
-      console.warn(`[ApiClient] GET ${endpoint} error:`, err.message);
-      return {
-        success: false,
-        error: {
-          code: 'FETCH_ERROR',
-          message: err.message,
-          timestamp: new Date().toISOString(),
-        },
-      };
+      return { success: false, error: { code: 'AUTH_ERROR', message: err?.message || 'Authentication required', timestamp: new Date().toISOString() } };
     }
   }
 
-  static async post<T = any>(
-    endpoint: string,
-    payload: any,
-    idempotencyKey?: string
-  ): Promise<ApiResponse<T>> {
+  static async post<T = any>(endpoint: string, payload: any, idempotencyKey?: string): Promise<ApiResponse<T>> {
     try {
-      const customHeaders: Record<string, string> = {};
-      if (idempotencyKey) {
-        customHeaders['X-Idempotency-Key'] = idempotencyKey;
-      }
-
-      const headers = await this.getAuthHeaders(customHeaders);
-      const res = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      const body = await res.json();
-      if (!res.ok) {
-        throw new Error(body?.error?.message || `HTTP ${res.status}: Failed to POST ${endpoint}`);
-      }
-
-      return body;
+      const headers = await this.getAuthHeaders(idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : {});
+      return await this.request<T>(endpoint, { method: 'POST', headers, body: JSON.stringify(payload) });
     } catch (err: any) {
-      console.warn(`[ApiClient] POST ${endpoint} error:`, err.message);
-      return {
-        success: false,
-        error: {
-          code: 'POST_ERROR',
-          message: err.message,
-          timestamp: new Date().toISOString(),
-        },
-      };
+      return { success: false, error: { code: 'AUTH_ERROR', message: err?.message || 'Authentication required', timestamp: new Date().toISOString() } };
     }
   }
 
   static async put<T = any>(endpoint: string, payload: any): Promise<ApiResponse<T>> {
     try {
       const headers = await this.getAuthHeaders();
-      const res = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      const body = await res.json();
-      if (!res.ok) {
-        throw new Error(body?.error?.message || `HTTP ${res.status}: Failed to PUT ${endpoint}`);
-      }
-
-      return body;
+      return await this.request<T>(endpoint, { method: 'PUT', headers, body: JSON.stringify(payload) });
     } catch (err: any) {
-      console.warn(`[ApiClient] PUT ${endpoint} error:`, err.message);
-      return {
-        success: false,
-        error: {
-          code: 'PUT_ERROR',
-          message: err.message,
-          timestamp: new Date().toISOString(),
-        },
-      };
+      return { success: false, error: { code: 'AUTH_ERROR', message: err?.message || 'Authentication required', timestamp: new Date().toISOString() } };
     }
   }
 
   static async delete<T = any>(endpoint: string): Promise<ApiResponse<T>> {
     try {
       const headers = await this.getAuthHeaders();
-      const res = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'DELETE',
-        headers,
-      });
-
-      const body = await res.json();
-      if (!res.ok) {
-        throw new Error(body?.error?.message || `HTTP ${res.status}: Failed to DELETE ${endpoint}`);
-      }
-
-      return body;
+      return await this.request<T>(endpoint, { method: 'DELETE', headers });
     } catch (err: any) {
-      console.warn(`[ApiClient] DELETE ${endpoint} error:`, err.message);
-      return {
-        success: false,
-        error: {
-          code: 'DELETE_ERROR',
-          message: err.message,
-          timestamp: new Date().toISOString(),
-        },
-      };
+      return { success: false, error: { code: 'AUTH_ERROR', message: err?.message || 'Authentication required', timestamp: new Date().toISOString() } };
     }
   }
 }
