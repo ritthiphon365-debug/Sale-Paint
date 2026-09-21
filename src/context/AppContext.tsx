@@ -19,7 +19,6 @@ import {
 } from '../types';
 import {
   StorageKeys,
-  hasStoredKey,
   getStoredData,
   setStoredData,
   clearNamespaceData,
@@ -49,6 +48,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   onSnapshot,
   getDocFromServer,
   collection,
@@ -157,7 +157,8 @@ interface AppContextType {
   resetStock: () => void;
   resetCustomers: () => void;
   resetAllData: () => void;
-  resetToFactorySettings: (keepCatalog?: boolean) => Promise<void>;
+  // catalogMode: 'keep' = คงฐานข้อมูลเดิมไว้, 'sample' = ใส่สินค้าตัวอย่างกลับ (ค่าเดิม), 'empty' = เริ่มต้นแบบไม่มีสินค้าเลย
+  resetToFactorySettings: (catalogMode?: 'keep' | 'sample' | 'empty') => Promise<void>;
 
   // Google Integration
   googleConnected: boolean;
@@ -210,91 +211,6 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | null>(null);
-
-// Initial seed sales for a rich realistic experience
-const INITIAL_SALES_SEED: SaleItem[] = [
-  {
-    id: 'sale-001',
-    billId: 'BILL-20260916-01',
-    date: '2026-09-16',
-    productId: 'prod-wb-01',
-    productName: 'WEATHERBOND',
-    brand: 'NIPPON PAINT',
-    sku: 'WB-EXT-01',
-    size: '5GL',
-    base: 'A',
-    filmColor: 'กึ่งเงา (Semi-Gloss)',
-    colorCode: 'OW-1002',
-    price: 3450,
-    tintPrice: 200,
-    quantity: 2,
-    total: 7300,
-    customerName: 'ช่างสมชาย รับเหมาพรีเมียม',
-    customerPhone: '081-445-9988',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'sale-002',
-    billId: 'BILL-20260916-01',
-    date: '2026-09-16',
-    productId: 'prod-pri-06',
-    productName: 'QUICK SEALER PRIMER',
-    brand: 'NIPPON PAINT',
-    sku: 'PRI-QUICK-06',
-    size: '5GL',
-    price: 2950,
-    tintPrice: 0,
-    quantity: 2,
-    total: 5900,
-    customerName: 'ช่างสมชาย รับเหมาพรีเมียม',
-    customerPhone: '081-445-9988',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'sale-003',
-    billId: 'BILL-20260915-02',
-    date: '2026-09-15',
-    productId: 'prod-wba-02',
-    productName: 'WEATHERBOND ADVANCE',
-    brand: 'NIPPON PAINT',
-    sku: 'WBA-ADV-02',
-    size: '5GL',
-    base: 'B',
-    filmColor: 'เนียน (Sheen)',
-    colorCode: 'GY-5040',
-    price: 4150,
-    tintPrice: 350,
-    quantity: 4,
-    total: 18000,
-    customerName: 'คุณวิภาวรรณ สถาปนิก',
-    customerPhone: '089-223-1100',
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'sale-004',
-    billId: 'BILL-20260914-03',
-    date: '2026-09-14',
-    productId: 'prod-air-04',
-    productName: 'AIRCARE INTERIOR',
-    brand: 'NIPPON PAINT',
-    sku: 'AIR-INT-04',
-    size: '5GL',
-    base: 'A',
-    filmColor: 'ด้านพิเศษ (Dead Matt)',
-    colorCode: 'WH-0001',
-    price: 3890,
-    tintPrice: 0,
-    quantity: 3,
-    total: 11670,
-    customerName: 'โครงการ พลีโน่ ราชพฤกษ์',
-    customerPhone: '02-889-1234',
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    updatedAt: new Date(Date.now() - 172800000).toISOString(),
-  }
-];
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Navigation
@@ -434,18 +350,103 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
   };
 
+  // แปลงรายการ "แคตตาล็อกสินค้า" (CatalogItem = ตัวแปรแต่ละ SKU) ให้กลายเป็น
+  // "การตั้งค่าสินค้า" (ProductConfig = ใช้คำนวณสต็อก) โดยรวมตามชื่อสินค้า+แบรนด์
+  // เพื่อให้หน้าฐานข้อมูลสินค้า (Catalog) กับหน้าสต็อก (Stock) เห็นข้อมูลชุดเดียวกันเสมอ
+  // ไม่ทับยอดสต็อกเดิม (initialStock) ของสินค้าที่มีอยู่แล้ว
+  const deriveProductsFromCatalog = (
+    items: CatalogItem[],
+    existingProducts: ProductConfig[]
+  ): ProductConfig[] => {
+    const existingByKey = new Map<string, ProductConfig>();
+    existingProducts.forEach((p) => {
+      existingByKey.set(`${(p.brand || '').trim().toLowerCase()}_${p.name.trim().toLowerCase()}`, p);
+    });
+
+    const groups = new Map<string, CatalogItem[]>();
+    items.forEach((item) => {
+      const key = `${(item.brand || '').trim().toLowerCase()}_${item.name.trim().toLowerCase()}`;
+      const arr = groups.get(key) || [];
+      arr.push(item);
+      groups.set(key, arr);
+    });
+
+    const derived: ProductConfig[] = [];
+    groups.forEach((rows, key) => {
+      const existing = existingByKey.get(key);
+      const sizes = Array.from(new Set(rows.map((r) => r.size).filter(Boolean))) as any[];
+      const bases = Array.from(new Set(rows.map((r) => r.base).filter((b) => b && b !== '-'))) as any[];
+      const filmColors = Array.from(new Set(rows.map((r) => r.filmColor).filter(Boolean))) as string[];
+      const hasColorCode = rows.some((r) => r.colorCode && r.colorCode !== '-');
+
+      const basePrices: Record<string, number> = { ...(existing?.basePrices || {}) };
+      sizes.forEach((size) => {
+        const match = rows.find((r) => r.size === size);
+        if (match) basePrices[size] = match.price;
+      });
+
+      derived.push({
+        id: existing?.id || `prod-${key.replace(/[^a-z0-9]/gi, '-')}`,
+        sku: existing?.sku || rows[0].sku,
+        name: rows[0].name,
+        brand: rows[0].brand || existing?.brand || '',
+        category: rows[0].category || existing?.category || '',
+        availableSizes: sizes.length ? sizes : existing?.availableSizes || [],
+        hasBases: bases.length > 0,
+        availableBases: bases.length ? bases : existing?.availableBases,
+        hasFilmColor: filmColors.length > 0,
+        filmColors: filmColors.length ? filmColors : existing?.filmColors,
+        hasColorCode,
+        basePrices: basePrices as Record<any, number>,
+        // สำคัญ: คงยอดสต็อกตั้งต้นเดิมไว้เสมอ ไม่ให้ import แคตตาล็อกไปล้างสต็อกที่มีอยู่
+        initialStock: existing?.initialStock || {},
+        isQuickPick: existing?.isQuickPick,
+      });
+    });
+
+    // เก็บสินค้าที่ไม่มีในแคตตาล็อก (เช่น เพิ่มด้วยมือในหน้าสต็อกโดยตรง) ไว้ตามเดิม ไม่ลบทิ้ง
+    const derivedKeys = new Set(groups.keys());
+    existingProducts.forEach((p) => {
+      const key = `${(p.brand || '').trim().toLowerCase()}_${p.name.trim().toLowerCase()}`;
+      if (!derivedKeys.has(key)) derived.push(p);
+    });
+
+    return derived;
+  };
+
   // Product Catalog (ฐานข้อมูลสินค้า PC แต่ละคน)
+  // หมายเหตุ: ค่าเริ่มต้นเป็น "แอปเปล่า" ([]) ไม่ใช่สินค้าตัวอย่างอีกต่อไป
+  // สินค้าตัวอย่าง (INITIAL_CATALOG_ITEMS) จะถูกใช้เฉพาะตอนเลือกโหมด "ใส่สินค้าตัวอย่าง" ตอนคืนค่าโรงงานเท่านั้น
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>(() => {
-    return getStoredData<CatalogItem[]>(StorageKeys.CATALOG_ITEMS, INITIAL_CATALOG_ITEMS);
+    return getStoredData<CatalogItem[]>(StorageKeys.CATALOG_ITEMS, []);
   });
   const [catalogSyncTime, setCatalogSyncTime] = useState<string | null>(() => {
     return getStoredData<string | null>(`${StorageKeys.CATALOG_ITEMS}_sync`, null);
   });
 
+  // ทุกครั้งที่แคตตาล็อกเปลี่ยน ให้ derive สินค้าใน "products" (ใช้คำนวณสต็อก) ให้ตรงกันเสมอ
+  // แล้วส่งขึ้น Firestore ทั้งคู่ เพื่อให้เครื่องอื่นเห็นข้อมูลตรงกันแบบเรียลไทม์
+  const syncCatalogAndProducts = (updatedCatalog: CatalogItem[], catalogDelta: CatalogItem[]) => {
+    const updatedProducts = deriveProductsFromCatalog(updatedCatalog, products);
+    setProducts(updatedProducts);
+    setStoredData(StorageKeys.PRODUCTS, updatedProducts);
+
+    if (catalogDelta.length) {
+      persistItemsToFirestore(catalogCollectionRef, catalogDelta).catch((err) => {
+        console.error('[Firestore] Failed to sync catalog item(s):', err);
+        showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+      });
+    }
+    persistItemsToFirestore(productsCollectionRef, updatedProducts).catch((err) => {
+      console.error('[Firestore] Failed to sync products:', err);
+    });
+  };
+
   const addCatalogItem = (item: CatalogItem) => {
     const updated = [item, ...catalogItems];
     setCatalogItems(updated);
     setStoredData(StorageKeys.CATALOG_ITEMS, updated);
+    syncCatalogAndProducts(updated, [item]);
     addAuditLog('Product Edit', `เพิ่มสินค้าในแคตตาล็อก: ${item.name} (${item.sku})`, 'success');
     showToast(`เพิ่มสินค้า ${item.name} ในแคตตาล็อกสำเร็จ`, 'success');
 
@@ -459,6 +460,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = catalogItems.map((c) => (c.id === item.id ? item : c));
     setCatalogItems(updated);
     setStoredData(StorageKeys.CATALOG_ITEMS, updated);
+    syncCatalogAndProducts(updated, [item]);
     addAuditLog('Product Edit', `แก้ไขสินค้าในแคตตาล็อก: ${item.name}`, 'info');
     showToast(`แก้ไขข้อมูล ${item.name} สำเร็จ`, 'success');
   };
@@ -468,6 +470,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = catalogItems.filter((c) => c.id !== id);
     setCatalogItems(updated);
     setStoredData(StorageKeys.CATALOG_ITEMS, updated);
+    syncCatalogAndProducts(updated, []);
+    deleteItemsFromFirestore(catalogCollectionRef, [id]).catch((err) => {
+      console.error('[Firestore] Failed to delete catalog item:', err);
+    });
     addAuditLog('Product Edit', `ลบสินค้าจากแคตตาล็อก: ${target?.name || id}`, 'warning');
     showToast('ลบรายการสินค้าเรียบร้อย', 'info');
   };
@@ -477,10 +483,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     mode: 'replace' | 'append'
   ): { added: number; replaced: number; skipped: number } => {
     if (mode === 'replace') {
+      const previousIds = catalogItems.map((c) => c.id);
       setCatalogItems(newItems);
       setStoredData(StorageKeys.CATALOG_ITEMS, newItems);
+      // เคลียร์ของเก่าบน Firestore ก่อน แล้วค่อยเขียนชุดใหม่ทับ (ผ่าน syncCatalogAndProducts)
+      deleteItemsFromFirestore(catalogCollectionRef, previousIds).catch((err) => {
+        console.error('[Firestore] Failed to clear old catalog items:', err);
+      });
+      syncCatalogAndProducts(newItems, newItems);
       addAuditLog('Product Edit', `นำเข้าไฟล์ Excel แทนที่แคตตาล็อกเดิมทั้งหมด ${newItems.length} รายการ`, 'info');
-      showToast(`แทนที่ข้อมูลแคตตาล็อกสำเร็จ ${newItems.length} รายการ`, 'success');
+      showToast(`แทนที่ข้อมูลแคตตาล็อกสำเร็จ ${newItems.length} รายการ (ซิงก์ไปหน้าสต็อกอัตโนมัติ)`, 'success');
 
       if (googleConnected) {
         GoogleSheetsService.pushCatalogToSheet(newItems, `${brandSettings.brandName} Product Catalog`).catch(console.warn);
@@ -515,8 +527,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const merged = [...catalogItems, ...toAdd];
       setCatalogItems(merged);
       setStoredData(StorageKeys.CATALOG_ITEMS, merged);
+      syncCatalogAndProducts(merged, toAdd);
       addAuditLog('Product Edit', `เพิ่มสินค้าใหม่จากไฟล์ Excel ${toAdd.length} รายการ (พบรายการเดิมที่มีอยู่แล้ว ${skipped} รายการ)`, 'success');
-      showToast(`เพิ่มสินค้าใหม่ ${toAdd.length} รายการ (ข้ามรายการเดิม ${skipped} รายการ)`, 'success');
+      showToast(`เพิ่มสินค้าใหม่ ${toAdd.length} รายการ (ข้ามรายการเดิม ${skipped} รายการ, ซิงก์ไปหน้าสต็อกอัตโนมัติ)`, 'success');
 
       if (googleConnected) {
         GoogleSheetsService.pushCatalogToSheet(merged, `${brandSettings.brandName} Product Catalog`).catch(console.warn);
@@ -540,15 +553,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Products
+  // Products (ค่าเริ่มต้นเป็น "แอปเปล่า" ([]) เช่นเดียวกับแคตตาล็อก — ดูหมายเหตุด้านบน)
   const [products, setProducts] = useState<ProductConfig[]>(() => {
-    return getStoredData<ProductConfig[]>(StorageKeys.PRODUCTS, INITIAL_PRODUCTS);
+    return getStoredData<ProductConfig[]>(StorageKeys.PRODUCTS, []);
   });
 
   const addProduct = (prod: ProductConfig) => {
     const updated = [prod, ...products];
     setProducts(updated);
     setStoredData(StorageKeys.PRODUCTS, updated);
+    persistItemsToFirestore(productsCollectionRef, [prod]).catch((err) => {
+      console.error('[Firestore] Failed to sync product:', err);
+      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+    });
     addAuditLog('Product Edit', `เพิ่มสินค้าใหม่: ${prod.name} (${prod.sku})`, 'info');
     showToast(`เพิ่มสินค้า ${prod.name} เรียบร้อย`, 'success');
   };
@@ -557,6 +574,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = products.map((p) => (p.id === prod.id ? prod : p));
     setProducts(updated);
     setStoredData(StorageKeys.PRODUCTS, updated);
+    persistItemsToFirestore(productsCollectionRef, [prod]).catch((err) => {
+      console.error('[Firestore] Failed to sync product:', err);
+      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+    });
     addAuditLog('Product Edit', `แก้ไขข้อมูลสินค้า: ${prod.name}`, 'info');
     showToast(`อัปเดตข้อมูล ${prod.name} สำเร็จ`, 'success');
   };
@@ -566,12 +587,97 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = products.filter((p) => p.id !== id);
     setProducts(updated);
     setStoredData(StorageKeys.PRODUCTS, updated);
+    deleteItemsFromFirestore(productsCollectionRef, [id]).catch((err) => {
+      console.error('[Firestore] Failed to delete product:', err);
+    });
     addAuditLog('Product Edit', `ลบสินค้า: ${target?.name || id}`, 'warning');
     showToast('ลบรายการสินค้าเรียบร้อย', 'info');
   };
 
   // Firestore is the shared source of truth for sales. LocalStorage is only a cache.
   const salesCollectionRef = collection(db, 'sales');
+  // เพิ่มคอลเลกชันกลางสำหรับ catalog / products / stock-in เช่นเดียวกับ sales
+  // เพื่อให้ทุกเครื่องเห็นฐานข้อมูลสินค้าและสต็อกตรงกันแบบเรียลไทม์ (แก้ปัญหาซิงค์หลายเครื่อง)
+  const catalogCollectionRef = collection(db, 'catalog_items');
+  const productsCollectionRef = collection(db, 'products');
+  const stockInCollectionRef = collection(db, 'stock_ins');
+
+  const persistItemsToFirestore = async (colRef: ReturnType<typeof collection>, items: { id: string }[]) => {
+    for (let i = 0; i < items.length; i += 450) {
+      const batch = writeBatch(db);
+      items.slice(i, i + 450).forEach((item) => {
+        batch.set(doc(db, colRef.path, item.id), item);
+      });
+      await batch.commit();
+    }
+  };
+
+  const deleteItemsFromFirestore = async (colRef: ReturnType<typeof collection>, ids: string[]) => {
+    for (let i = 0; i < ids.length; i += 450) {
+      const batch = writeBatch(db);
+      ids.slice(i, i + 450).forEach((id) => batch.delete(doc(db, colRef.path, id)));
+      await batch.commit();
+    }
+  };
+
+  const clearFirestoreCollection = async (colRef: ReturnType<typeof collection>) => {
+    const snap = await getDocs(colRef);
+    if (snap.empty) return;
+    const ids = snap.docs.map((d) => d.id);
+    await deleteItemsFromFirestore(colRef, ids);
+  };
+
+  // ตั้งค่า realtime sync ให้คอลเลกชันหนึ่ง ๆ: ย้ายข้อมูลในเครื่องขึ้น Firestore ครั้งแรก
+  // (เฉพาะตอนที่ยังไม่มีข้อมูลบนคลาวด์เลย) จากนั้นฟังการเปลี่ยนแปลงแบบเรียลไทม์ตลอดไป
+  const setupRealtimeCollection = <T extends { id: string }>(
+    colRef: ReturnType<typeof collection>,
+    migrationDocName: string,
+    localData: T[],
+    onCloudUpdate: (items: T[]) => void,
+    sortFn?: (a: T, b: T) => number
+  ) => {
+    let active = true;
+    let unsubscribe: (() => void) | null = null;
+
+    const start = async () => {
+      try {
+        const migrationRef = doc(db, 'system_config', migrationDocName);
+        const cloudBefore = await getDocs(colRef);
+
+        if (cloudBefore.empty && localData.length > 0) {
+          const claimed = await runTransaction(db, async (tx) => {
+            const snap = await tx.get(migrationRef);
+            if (snap.exists()) return false;
+            tx.set(migrationRef, { initialized: true, migratedAt: new Date().toISOString(), count: localData.length });
+            return true;
+          });
+          if (claimed) await persistItemsToFirestore(colRef, localData);
+        } else if (!cloudBefore.empty) {
+          await setDoc(migrationRef, { initialized: true, migratedAt: new Date().toISOString() }, { merge: true });
+        }
+
+        if (!active) return;
+        unsubscribe = onSnapshot(
+          colRef,
+          (snapshot) => {
+            if (!active) return;
+            let cloudItems = snapshot.docs.map((d) => d.data() as T).filter((i) => (i as any)?.id);
+            if (sortFn) cloudItems = cloudItems.sort(sortFn);
+            onCloudUpdate(cloudItems);
+          },
+          (err) => console.warn(`[Firestore] Realtime listener error (${migrationDocName}):`, err)
+        );
+      } catch (err) {
+        console.warn(`[Firestore] Realtime setup skipped (${migrationDocName}):`, err);
+      }
+    };
+
+    start();
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  };
 
   const persistSalesToFirestore = async (items: SaleItem[]) => {
     // Firestore batches are limited to 500 writes. Chunk safely for imports.
@@ -593,15 +699,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Sales Records
+  // หมายเหตุ: ไม่ใช้ INITIAL_SALES_SEED (ข้อมูลตัวอย่าง) เป็นค่าเริ่มต้นอีกต่อไป
+  // แอปใหม่จะเริ่มต้นด้วยรายการขายว่างเปล่าเสมอ ข้อมูลจริงจะมาจาก Firestore realtime sync ด้านล่าง
   const [sales, setSales] = useState<SaleItem[]>(() => {
-    if (hasStoredKey(StorageKeys.SALES)) {
-      return getStoredData<SaleItem[]>(StorageKeys.SALES, []);
-    }
-    // Only use initial seed on brand new first install before any reset
-    if (hasStoredKey(StorageKeys.INITIALIZED)) {
-      return [];
-    }
-    return INITIAL_SALES_SEED;
+    return getStoredData<SaleItem[]>(StorageKeys.SALES, []);
   });
 
   // Stock Ins
@@ -618,6 +719,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newRecord, ...stockIns];
     setStockIns(updated);
     setStoredData(StorageKeys.STOCK_IN, updated);
+    persistItemsToFirestore(stockInCollectionRef, [newRecord]).catch((err) => {
+      console.error('[Firestore] Failed to sync stock-in:', err);
+      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+    });
     addAuditLog('Stock In', `รับสต็อกเข้า ${stk.productName} [${stk.size}] +${stk.quantity} หน่วย`, 'success');
     showToast(`เติมสต็อก ${stk.productName} +${stk.quantity} เรียบร้อย`, 'success');
   };
@@ -631,6 +736,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [...newRecords, ...stockIns];
     setStockIns(updated);
     setStoredData(StorageKeys.STOCK_IN, updated);
+    persistItemsToFirestore(stockInCollectionRef, newRecords).catch((err) => {
+      console.error('[Firestore] Failed to sync bulk stock-in:', err);
+      showToast('บันทึกในเครื่องแล้ว แต่ซิงก์ฐานข้อมูลกลางไม่สำเร็จ', 'error');
+    });
     addAuditLog('Stock In', `รับสต็อกเข้าแบบกลุ่ม (Bulk) รวม ${items.length} รายการ`, 'success');
     showToast(`เติมสต็อกแบบกลุ่มสำเร็จ ${items.length} รายการ`, 'success');
   };
@@ -909,6 +1018,49 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       active = false;
       unsubscribe?.();
     };
+  }, []);
+
+  // Realtime shared catalog: ทุกเครื่องเห็นฐานข้อมูลสินค้าตรงกันทันที
+  useEffect(() => {
+    return setupRealtimeCollection<CatalogItem>(
+      catalogCollectionRef,
+      'catalog_migration',
+      getStoredData<CatalogItem[]>(StorageKeys.CATALOG_ITEMS, []),
+      (cloudItems) => {
+        setCatalogItems(cloudItems);
+        setStoredData(StorageKeys.CATALOG_ITEMS, cloudItems);
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Realtime shared products (ใช้คำนวณสต็อก): ทุกเครื่องเห็นตรงกันทันที
+  useEffect(() => {
+    return setupRealtimeCollection<ProductConfig>(
+      productsCollectionRef,
+      'products_migration',
+      getStoredData<ProductConfig[]>(StorageKeys.PRODUCTS, []),
+      (cloudItems) => {
+        setProducts(cloudItems);
+        setStoredData(StorageKeys.PRODUCTS, cloudItems);
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Realtime shared stock-in records: ทุกเครื่องเห็นประวัติรับสต็อกตรงกันทันที
+  useEffect(() => {
+    return setupRealtimeCollection<StockInRecord>(
+      stockInCollectionRef,
+      'stock_in_migration',
+      getStoredData<StockInRecord[]>(StorageKeys.STOCK_IN, []),
+      (cloudItems) => {
+        setStockIns(cloudItems);
+        setStoredData(StorageKeys.STOCK_IN, cloudItems);
+      },
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Computed Stock
@@ -1327,12 +1479,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetAllData = () => {
     clearNamespaceData();
-    const zeroStockProducts = INITIAL_PRODUCTS.map((p) => ({
-      ...p,
-      initialStock: {},
-    }));
-    setProducts(zeroStockProducts);
-    setStoredData(StorageKeys.PRODUCTS, zeroStockProducts);
+    // ไม่ใส่สินค้าตัวอย่างกลับมาอีกต่อไป ให้สอดคล้องกับ resetToFactorySettings โหมด 'empty'
+    setProducts([]);
+    setStoredData(StorageKeys.PRODUCTS, []);
     setSales([]);
     setStoredData(StorageKeys.SALES, []);
     setStockIns([]);
@@ -1353,7 +1502,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Comprehensive Factory Reset: cleans all tables, sales, stock, target, config, and local cache
-  const resetToFactorySettings = async (keepCatalog: boolean = false) => {
+  const resetToFactorySettings = async (catalogMode: 'keep' | 'sample' | 'empty' = 'empty') => {
     try {
       // 1. Clear LocalStorage and SessionStorage entirely
       clearAllStorageData();
@@ -1367,24 +1516,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setSales([]);
       setStockIns([]);
       setCart([]);
-      
-      const zeroStockProducts = INITIAL_PRODUCTS.map((p) => ({
-        ...p,
-        initialStock: {},
-      }));
 
-      if (!keepCatalog) {
+      // 3.1 ล้างฐานข้อมูลกลางบน Firestore ด้วย ไม่งั้น realtime listener จะดึงของเก่ากลับมาทันที
+      Promise.all([
+        clearFirestoreCollection(salesCollectionRef),
+        clearFirestoreCollection(stockInCollectionRef),
+      ]).catch((err) => console.error('[Firestore] Failed to clear sales/stock-in on reset:', err));
+
+      if (catalogMode === 'sample') {
+        // ใส่สินค้าตัวอย่างกลับ (ไว้สำหรับทดลองใช้งาน/สาธิต)
+        const zeroStockProducts = INITIAL_PRODUCTS.map((p) => ({ ...p, initialStock: {} }));
         setCatalogItems(INITIAL_CATALOG_ITEMS);
         setProducts(zeroStockProducts);
         setStoredData(StorageKeys.CATALOG_ITEMS, INITIAL_CATALOG_ITEMS);
         setStoredData(StorageKeys.PRODUCTS, zeroStockProducts);
-      } else {
+        clearFirestoreCollection(catalogCollectionRef)
+          .then(() => Promise.all([
+            persistItemsToFirestore(catalogCollectionRef, INITIAL_CATALOG_ITEMS),
+            clearFirestoreCollection(productsCollectionRef).then(() => persistItemsToFirestore(productsCollectionRef, zeroStockProducts)),
+          ]))
+          .catch((err) => console.error('[Firestore] Failed to reset catalog to sample:', err));
+      } else if (catalogMode === 'keep') {
+        // คงฐานข้อมูลแคตตาล็อกสินค้าจริงไว้ ล้างแค่สต็อกคงเหลือ
         const preservedCatalog = getStoredData<CatalogItem[]>(StorageKeys.CATALOG_ITEMS, catalogItems);
         setCatalogItems(preservedCatalog);
         setStoredData(StorageKeys.CATALOG_ITEMS, preservedCatalog);
         const zeroCatalogProducts = products.map((p) => ({ ...p, initialStock: {} }));
         setProducts(zeroCatalogProducts);
         setStoredData(StorageKeys.PRODUCTS, zeroCatalogProducts);
+        persistItemsToFirestore(productsCollectionRef, zeroCatalogProducts).catch((err) =>
+          console.error('[Firestore] Failed to sync preserved catalog on reset:', err)
+        );
+      } else {
+        // 'empty' (ค่าเริ่มต้น): เริ่มต้นแอปแบบเปล่าจริง ๆ ไม่มีสินค้าตัวอย่างเลย
+        setCatalogItems([]);
+        setProducts([]);
+        setStoredData(StorageKeys.CATALOG_ITEMS, []);
+        setStoredData(StorageKeys.PRODUCTS, []);
+        Promise.all([
+          clearFirestoreCollection(catalogCollectionRef),
+          clearFirestoreCollection(productsCollectionRef),
+        ]).catch((err) => console.error('[Firestore] Failed to clear catalog/products on reset:', err));
       }
       
       setYearTargets(INITIAL_YEAR_TARGETS);
@@ -1413,7 +1585,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           timestamp: new Date().toISOString(),
           action: 'Reset Data' as const,
           user: userSession.name || 'Admin',
-          detail: `ล้างข้อมูลและคืนค่าโรงงานสมบูรณ์ (Factory Reset) ${keepCatalog ? '[เก็บฐานข้อมูลแคตตาล็อกสินค้าไว้]' : '[ล้างทุกอย่างหมดจด 100%]' }`,
+          detail: `ล้างข้อมูลและคืนค่าโรงงานสมบูรณ์ (Factory Reset) [${
+            catalogMode === 'keep'
+              ? 'เก็บฐานข้อมูลแคตตาล็อกสินค้าไว้'
+              : catalogMode === 'sample'
+              ? 'ใส่สินค้าตัวอย่างกลับ'
+              : 'ล้างทุกอย่างหมดจด 100% (แอปเปล่า ไม่มีสินค้าตัวอย่าง)'
+          }]`,
           flag: 'danger' as const,
         },
       ];
