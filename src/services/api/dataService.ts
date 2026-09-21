@@ -18,10 +18,6 @@ import { CheckoutRequest, DataBackendType } from './types';
 
 // Read controlled feature flag with dynamic runtime override support
 function getActiveBackend(): DataBackendType {
-  const runtimeOverride = typeof window !== 'undefined' ? localStorage.getItem('SALEPAINT_DATA_BACKEND') : null;
-  if (runtimeOverride === 'firebase' || runtimeOverride === 'supabase') {
-    return runtimeOverride as DataBackendType;
-  }
   const envBackend = (import.meta as any).env?.VITE_DATA_BACKEND;
   return envBackend === 'firebase' ? 'firebase' : 'supabase';
 }
@@ -36,10 +32,12 @@ export class DataService {
   }
 
   static setBackend(target: DataBackendType) {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('SALEPAINT_DATA_BACKEND', target);
-      console.log(`[DataService] Data backend switched to: ${target}`);
+    const configured = this.backend;
+    if (target !== configured) {
+      console.warn(`[DataService] Runtime backend switching is disabled. Configured backend remains: ${configured}`);
+      return false;
     }
+    return true;
   }
 
   // --- SALES ---

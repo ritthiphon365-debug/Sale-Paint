@@ -16,19 +16,16 @@ export class ApiClient {
       ...customHeaders,
     };
 
-    try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const idToken = await currentUser.getIdToken();
-        headers['Authorization'] = `Bearer ${idToken}`;
-      } else {
-        // Transitional session bearer for offline or pre-authenticated kiosk mode
-        const cachedEmail = localStorage.getItem('nippon_user_email') || 'kiosk@nipponpaint.co.th';
-        headers['Authorization'] = `Bearer ${cachedEmail}`;
-      }
-    } catch {
-      headers['Authorization'] = `Bearer kiosk-session`;
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('AUTH_REQUIRED: Please sign in before using the production data API.');
     }
+
+    const idToken = await currentUser.getIdToken();
+    if (!idToken) {
+      throw new Error('AUTH_REQUIRED: Firebase ID token is unavailable.');
+    }
+    headers['Authorization'] = `Bearer ${idToken}`;
 
     return headers;
   }
