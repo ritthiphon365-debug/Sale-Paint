@@ -157,6 +157,8 @@ export interface CommissionConfig {
   tiers: CommissionTier[];
   specialBands?: SpecialCommissionBand[];
   rewardPerHead?: number; // For headcount calculation
+  legacySpecialTable?: { pct: number; amt: number }[];
+  legacyPerHeadTable?: { min: number; amt: number }[];
   requireTargetAchievementForGallon?: boolean; // บังคับเงื่อนไขต้องถึง % ยอดขายรวมก่อนถึงจะได้รับเงินรายแกนลอน
   minTargetAchievementForGallon?: number; // กำหนด % ขั้นต่ำของเป้าหมาย เช่น 80% หรือ 100%
 }

@@ -6,6 +6,7 @@ import {
   MonthTargetData,
   CatalogItem,
 } from './types';
+import { LEGACY_MAIN_TABLE, LEGACY_SPECIAL_TABLE, LEGACY_PERHEAD_TABLE } from './services/commissionLegacy';
 
 export const INITIAL_CATALOG_ITEMS: CatalogItem[] = [
   // WEATHERBOND - มีขนาด เบส และฟิล์มสี
@@ -259,17 +260,17 @@ export const INITIAL_COMMISSION_CONFIG: CommissionConfig = {
   monthlyTarget: 500000,
   headcount: 3,
   tiers: [
-    { achievementPercent: 80, rewardAmount: 3000 },
-    { achievementPercent: 85, rewardAmount: 4500 },
-    { achievementPercent: 90, rewardAmount: 6000 },
-    { achievementPercent: 95, rewardAmount: 8000 },
-    { achievementPercent: 100, rewardAmount: 12000 },
-    { achievementPercent: 105, rewardAmount: 15000 },
-    { achievementPercent: 110, rewardAmount: 18000 },
-    { achievementPercent: 115, rewardAmount: 22000 },
-    { achievementPercent: 120, rewardAmount: 27000 },
-    { achievementPercent: 125, rewardAmount: 32000 },
-    { achievementPercent: 130, rewardAmount: 38000 },
+    { achievementPercent: 80, rewardAmount: 6000 },
+    { achievementPercent: 85, rewardAmount: 6500 },
+    { achievementPercent: 90, rewardAmount: 7000 },
+    { achievementPercent: 95, rewardAmount: 7500 },
+    { achievementPercent: 100, rewardAmount: 10000 },
+    { achievementPercent: 105, rewardAmount: 11000 },
+    { achievementPercent: 110, rewardAmount: 12000 },
+    { achievementPercent: 115, rewardAmount: 13000 },
+    { achievementPercent: 120, rewardAmount: 14250 },
+    { achievementPercent: 125, rewardAmount: 15500 },
+    { achievementPercent: 130, rewardAmount: 16750 },
   ],
   specialBands: [
     { id: 'sb-1', minSales: 200000, maxSales: 400000, rewardAmount: 2500 },
@@ -277,6 +278,8 @@ export const INITIAL_COMMISSION_CONFIG: CommissionConfig = {
     { id: 'sb-3', minSales: 600001, maxSales: 1000000, rewardAmount: 10000 },
   ],
   rewardPerHead: 1500,
+  legacySpecialTable: LEGACY_SPECIAL_TABLE.map((t) => ({ ...t })),
+  legacyPerHeadTable: LEGACY_PERHEAD_TABLE.map((t) => ({ ...t })),
   requireTargetAchievementForGallon: true,
   minTargetAchievementForGallon: 80, // ต้องทำยอดรวมให้ถึง 80% ของเป้าถึงจะได้รับเงินรายแกนลอน
 };
