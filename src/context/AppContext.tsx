@@ -33,17 +33,8 @@ import {
   INITIAL_YEAR_TARGETS,
 } from '../mockData';
 import { GoogleSheetsService } from '../services/googleSheetsService';
-import {
-  auth,
-  db,
-  googleProvider,
-  signInWithPopup,
-  signInWithRedirect,
-  signInAnonymously,
-  getRedirectResult,
-  signOut,
-  onAuthStateChanged,
-} from '../lib/firebase';
+import { db } from '../lib/firebase';
+import { SupabaseAuthFoundation } from '../lib/supabase';
 import {
   doc,
   getDoc,
@@ -78,6 +69,8 @@ interface AppContextType {
   // Active User / Session
   userSession: UserSession;
   updateUserSession: (updated: Partial<UserSession>) => void;
+  isAuthReady: boolean;
+  isAuthenticated: boolean;
   loginWithGoogle: () => void;
   logout: () => void;
   isOnline: boolean;
@@ -267,71 +260,53 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   });
 
-  // Listen to Firebase Auth state
+  // Supabase Auth session state (gates access to the app — see isAuthReady/isAuthenticated below)
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Listen to Supabase Auth state (primary auth backend)
   useEffect(() => {
-    // Silently authenticate anonymously if not logged in
-    // to ensure Firestore rules (request.auth != null) are satisfied across all domains
-    if (!auth.currentUser) {
-      signInAnonymously(auth).catch((e) => {
-        console.warn('Anonymous sign-in on boot:', e);
-      });
-    }
+    let unsubscribed = false;
 
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        if (firebaseUser.isAnonymous) {
-          // Anonymous user: keep current custom name & email, just update uid
-          setUserSession((prev) => ({
-            ...prev,
-            uid: firebaseUser.uid,
-            isOnline: true,
-          }));
-          return;
-        }
-
-        const session: UserSession = {
-          uid: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'ผู้ใช้งาน Google',
-          email: firebaseUser.email || '',
-          avatar: firebaseUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    SupabaseAuthFoundation.getSession().then((session) => {
+      if (unsubscribed) return;
+      if (session?.user) {
+        const user = session.user;
+        const restoredSession: UserSession = {
+          uid: user.id,
+          name: user.email?.split('@')[0] || 'พนักงานขาย',
+          email: user.email || '',
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
           isOnline: true,
         };
-        setUserSession(session);
-        setStoredData(StorageKeys.USER_SESSION, session);
+        setUserSession(restoredSession);
+        setStoredData(StorageKeys.USER_SESSION, restoredSession);
+        setIsAuthenticated(true);
+      }
+      setIsAuthReady(true);
+    });
+
+    const { unsubscribe } = SupabaseAuthFoundation.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const user = session.user;
+        const nextSession: UserSession = {
+          uid: user.id,
+          name: user.email?.split('@')[0] || 'พนักงานขาย',
+          email: user.email || '',
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          isOnline: true,
+        };
+        setUserSession(nextSession);
+        setStoredData(StorageKeys.USER_SESSION, nextSession);
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
       }
     });
-    return () => unsubscribe();
-  }, []);
 
-  // Process redirect auth result if user returned from signInWithRedirect
-  useEffect(() => {
-    let isMounted = true;
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result?.user && isMounted) {
-          const user = result.user;
-          const session: UserSession = {
-            uid: user.uid,
-            name: user.displayName || user.email?.split('@')[0] || 'ผู้ใช้งาน Google',
-            email: user.email || '',
-            avatar: user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-            isOnline: true,
-          };
-          setUserSession(session);
-          setStoredData(StorageKeys.USER_SESSION, session);
-          addAuditLog('Settings Change', `เข้าสู่ระบบด้วยบัญชี Google (${user.email}) สำเร็จ (Redirect)`, 'success');
-          showToast(`เข้าสู่ระบบสำเร็จ ยินดีต้อนรับคุณ ${session.name}`, 'success');
-        }
-      })
-      .catch((err) => {
-        console.warn('Google redirect result error:', err);
-        if (err?.code === 'auth/unauthorized-domain') {
-          showToast('โดเมนนี้ยังไม่ได้รับอนุญาตใน Firebase Console กำลังเปิดตัวช่วย...', 'info');
-          setModalOpen('google-auth');
-        }
-      });
     return () => {
-      isMounted = false;
+      unsubscribed = true;
+      unsubscribe();
     };
   }, []);
 
@@ -347,15 +322,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginWithGoogle = async () => {
     setActiveTab('settings');
-    showToast('ระบบปรับเป็นแบบกำหนดชื่อพนักงาน PC โดยตรง ไม่ต้องล็อกอิน Google ให้ยุ่งยากแล้ว', 'info');
+    showToast('ระบบเข้าสู่ระบบด้วยอีเมล/รหัสผ่านผ่าน Supabase แล้ว ไม่ต้องใช้ Google Sign-In', 'info');
   };
 
   const logout = async () => {
     try {
-      await signOut(auth);
+      await SupabaseAuthFoundation.signOut();
     } catch (e) {
       // ignore
     }
+    setIsAuthenticated(false);
     const emptySession: UserSession = {
       name: 'Guest User',
       email: '',
@@ -2446,6 +2422,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setOpenDrawer,
         userSession,
         updateUserSession,
+        isAuthReady,
+        isAuthenticated,
         loginWithGoogle,
         logout,
         isOnline,
