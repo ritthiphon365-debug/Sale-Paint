@@ -8,7 +8,6 @@ import {
   Settings,
   ShieldAlert,
   FileText,
-  Sheet,
   Download,
   Upload,
   RefreshCw,
@@ -34,8 +33,6 @@ export const MobileDrawer: React.FC = () => {
     userSession,
     isOnline,
     setModalOpen,
-    openSpreadsheet,
-    openSpreadsheetViewer,
     logout,
   } = useApp();
 
@@ -50,7 +47,7 @@ export const MobileDrawer: React.FC = () => {
     {
       title: 'ระบบรายงานและการวิเคราะห์',
       items: [
-        { id: 'catalog', th: 'ฐานข้อมูลสินค้า PC', en: 'Product Catalog (Excel / Google)', icon: Layers },
+        { id: 'catalog', th: 'ฐานข้อมูลสินค้า PC', en: 'Product Catalog (Excel)', icon: Layers },
         { id: 'market-share', th: 'ส่วนแบ่งตลาด MKS', en: 'Market Share Daily/Weekly', icon: PieChart },
         { id: 'commission', th: 'คอมมิชชั่นและอินเซนทีฟ', en: 'Commission & Gallon Rules', icon: Award },
         { id: 'customers', th: 'ลูกค้าสัมพันธ์ CRM', en: 'Customer CRM & Follow-up', icon: Users },
@@ -68,9 +65,8 @@ export const MobileDrawer: React.FC = () => {
       ],
     },
     {
-      title: 'การเชื่อมต่อและข้อมูล',
+      title: 'ข้อมูลและระบบ',
       items: [
-        { id: 'sheets-sync', th: 'Google Sheets & Drive Sync', en: 'Google Cloud Sync', icon: Sheet },
         { id: 'import-export', th: 'นำเข้า / ส่งออก Excel', en: 'Excel Import / Export', icon: Download, modal: 'import-export' },
         { id: 'audit-logs', th: 'ประวัติบันทึกการทำงาน', en: 'Audit Security Logs', icon: ShieldAlert, modal: 'audit-logs' },
         { id: 'install-pwa', th: 'ติดตั้งแอปบนมือถือ', en: 'Install as PWA', icon: Smartphone, modal: 'install-pwa' },
@@ -137,28 +133,6 @@ export const MobileDrawer: React.FC = () => {
               <MessageCircle className="w-3.5 h-3.5 text-white fill-white" />
               <span>น้องบอท</span>
             </button>
-
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => {
-                  openSpreadsheetViewer();
-                  setOpenDrawer(false);
-                }}
-                className="py-1.5 px-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-[11px] font-medium flex items-center justify-center gap-1 transition-colors border border-emerald-800/60"
-              >
-                <Sheet className="w-3.5 h-3.5 text-emerald-400" />
-                <span>เปิดดูในแอป</span>
-              </button>
-              <button
-                onClick={() => {
-                  openSpreadsheet();
-                  setOpenDrawer(false);
-                }}
-                className="py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium flex items-center justify-center gap-1 transition-colors border border-slate-700/60"
-              >
-                <span>เปิดแท็บใหม่</span>
-              </button>
-            </div>
           </div>
         </div>
 
