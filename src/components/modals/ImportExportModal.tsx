@@ -47,7 +47,7 @@ export const ImportExportModal: React.FC = () => {
           <div>
             <h3 className="font-bold text-slate-800 text-sm mb-1">ส่งออกข้อมูล (Export)</h3>
             <p className="text-slate-500 mb-3">
-              ดาวน์โหลดข้อมูลการขายและสต็อกเป็นไฟล์ .xlsx เพื่อนำไปวิเคราะห์ใน Excel หรือ Google Sheets
+              ดาวน์โหลดข้อมูลการขายและสต็อกเป็นไฟล์ .xlsx เพื่อนำไปวิเคราะห์ใน Excel
             </p>
             <div className="grid grid-cols-2 gap-3">
               <button
