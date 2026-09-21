@@ -14,8 +14,6 @@ import {
   UserSession,
   CartItem,
   CatalogItem,
-  DriveSpreadsheetItem,
-  CloudSpreadsheetInfo,
 } from '../types';
 import {
   StorageKeys,
@@ -32,7 +30,6 @@ import {
   INITIAL_GALLON_RULES,
   INITIAL_YEAR_TARGETS,
 } from '../mockData';
-import { GoogleSheetsService } from '../services/googleSheetsService';
 import { db } from '../lib/firebase';
 import { SupabaseAuthFoundation } from '../lib/supabase';
 import {
@@ -71,7 +68,6 @@ interface AppContextType {
   updateUserSession: (updated: Partial<UserSession>) => void;
   isAuthReady: boolean;
   isAuthenticated: boolean;
-  loginWithGoogle: () => void;
   logout: () => void;
   isOnline: boolean;
 
@@ -84,8 +80,6 @@ interface AppContextType {
     items: CatalogItem[],
     mode: 'replace' | 'append'
   ) => { added: number; replaced: number; skipped: number };
-  syncCatalogToGoogle: () => Promise<string | null>;
-  catalogSyncTime: string | null;
 
   // Products Configs for quick picking
   products: ProductConfig[];
@@ -158,44 +152,6 @@ interface AppContextType {
   resetAllData: () => void;
   // catalogMode: 'keep' = คงฐานข้อมูลเดิมไว้, 'sample' = ใส่สินค้าตัวอย่างกลับ (ค่าเดิม), 'empty' = เริ่มต้นแบบไม่มีสินค้าเลย
   resetToFactorySettings: (catalogMode?: 'keep' | 'sample' | 'empty') => Promise<void>;
-
-  // Google Integration
-  googleConnected: boolean;
-  connectGoogle: () => void;
-  disconnectGoogle: () => void;
-  spreadsheetId: string;
-  spreadsheetName: string;
-  spreadsheetUrl: string;
-  setSpreadsheetId: (id: string, name?: string) => void;
-  googleWebhookUrl: string;
-  setGoogleWebhookUrl: (url: string) => void;
-  autoSyncSheets: boolean;
-  setAutoSyncSheets: (val: boolean) => void;
-  unsyncedSaleCount: number;
-  syncedSaleIds: string[];
-  syncWithGoogle: (targetSales?: SaleItem[]) => Promise<void>;
-  syncStatus: 'idle' | 'syncing' | 'success' | 'error';
-  syncError: string | null;
-  lastSyncTime: string | null;
-  exportSalesToCsv: () => void;
-  copySalesToClipboard: () => Promise<void>;
-  syncAllTabsToGoogle: () => Promise<void>;
-  exportAllTabsToExcel: () => void;
-  openSpreadsheet: () => void;
-
-  // Multi-Device & Google Drive Integration
-  isGoogleOAuthConnected: boolean;
-  connectGoogleOAuth: () => Promise<void>;
-  disconnectGoogleOAuth: () => void;
-  driveSpreadsheets: DriveSpreadsheetItem[];
-  isLoadingDriveFiles: boolean;
-  loadDriveSpreadsheets: (overrideToken?: string) => Promise<void>;
-  cloudSpreadsheetInfo: CloudSpreadsheetInfo | null;
-  selectSpreadsheet: (id: string, name?: string) => Promise<void>;
-  createNewCloudSpreadsheet: (title?: string) => Promise<void>;
-  pullSalesFromGoogleSheet: () => Promise<number>;
-  openSpreadsheetViewer: () => void;
-  closeSpreadsheetViewer: () => void;
 
   // Quick action modals
   modalOpen: string | null;
@@ -320,11 +276,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('บันทึกข้อมูลผู้ใช้งานเรียบร้อยแล้ว', 'success');
   };
 
-  const loginWithGoogle = async () => {
-    setActiveTab('settings');
-    showToast('ระบบเข้าสู่ระบบด้วยอีเมล/รหัสผ่านผ่าน Supabase แล้ว ไม่ต้องใช้ Google Sign-In', 'info');
-  };
-
   const logout = async () => {
     try {
       await SupabaseAuthFoundation.signOut();
@@ -413,9 +364,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>(() => {
     return getStoredData<CatalogItem[]>(StorageKeys.CATALOG_ITEMS, []);
   });
-  const [catalogSyncTime, setCatalogSyncTime] = useState<string | null>(() => {
-    return getStoredData<string | null>(`${StorageKeys.CATALOG_ITEMS}_sync`, null);
-  });
 
   // ทุกครั้งที่แคตตาล็อกเปลี่ยน ให้ derive สินค้าใน "products" (ใช้คำนวณสต็อก) ให้ตรงกันเสมอ
   // แล้วส่งขึ้น Firestore ทั้งคู่ เพื่อให้เครื่องอื่นเห็นข้อมูลตรงกันแบบเรียลไทม์
@@ -454,8 +402,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     syncCatalogAndProducts(updated, [item]);
     addAuditLog('Product Edit', `เพิ่มสินค้าในแคตตาล็อก: ${item.name} (${item.sku})`, 'success');
     showToast(`เพิ่มสินค้า ${item.name} ในแคตตาล็อกสำเร็จ`, 'success');
-    // หมายเหตุ: ไม่ push ไป Google Sheets ทันทีแล้ว — Google Sheets ใช้เป็นที่สำรองข้อมูลเป็นรอบ
-    // (ปุ่ม backup เอง หรือ auto-backup ตามเวลา) ไม่ใช่ real-time ต่อการบันทึกแต่ละครั้งอีกต่อไป
   };
 
   const updateCatalogItem = (item: CatalogItem) => {
@@ -537,21 +483,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       showToast(`เพิ่มสินค้าใหม่ ${toAdd.length} รายการ (ข้ามรายการเดิม ${skipped} รายการ, ซิงก์ไปหน้าสต็อกอัตโนมัติ)`, 'success');
 
       return { added: toAdd.length, replaced: 0, skipped };
-    }
-  };
-
-  const syncCatalogToGoogle = async (): Promise<string | null> => {
-    try {
-      const res = await GoogleSheetsService.pushCatalogToSheet(catalogItems, `${brandSettings.brandName} Product Catalog`);
-      const now = new Date().toLocaleTimeString('th-TH');
-      setCatalogSyncTime(now);
-      setStoredData(`${StorageKeys.CATALOG_ITEMS}_sync`, now);
-      addAuditLog('Google Sync', `ซิงค์ฐานข้อมูลสินค้า PC (${catalogItems.length} รายการ) ไปยัง Google Sheets`, 'success');
-      showToast(`ซิงค์แคตตาล็อก ${catalogItems.length} รายการไปยัง Google Sheets สำเร็จ`, 'success');
-      return res.url;
-    } catch (err: any) {
-      showToast('ไม่สามารถซิงค์ Google Sheets ได้: ' + (err.message || ''), 'error');
-      return null;
     }
   };
 
@@ -961,38 +892,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const billTotal = newSaleItems.reduce((acc, i) => acc + i.total, 0);
     addAuditLog('Add Sale', `เปิดบิล ${billId} (${customerName || 'ลูกค้าทั่วไป'}) ยอดรวม ฿${billTotal.toLocaleString()}`, 'success');
 
-    // Auto-sync bill to Google Sheets if configured
-    if (autoSyncSheets && (googleWebhookUrl || spreadsheetId || GoogleSheetsService.getToken())) {
-      showToast(`บันทึกบิล ${billId} แล้ว • กำลังส่งยอดเข้า Google Sheet...`, 'info');
-      GoogleSheetsService.pushSalesToSheet(newSaleItems, {
-        spreadsheetId,
-        webhookUrl: googleWebhookUrl,
-        spreadsheetTitle: `${brandSettings.brandName} รายงานยอดขาย`,
-      })
-        .then((res) => {
-          const newIds = newSaleItems.map((s) => s.id);
-          setSyncedSaleIds((prev) => {
-            const next = Array.from(new Set([...prev, ...newIds]));
-            setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, next);
-            return next;
-          });
-          const nowStr = new Date().toLocaleTimeString('th-TH');
-          setLastSyncTime(nowStr);
-          setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, nowStr);
-          if (res.spreadsheetId && !spreadsheetId) {
-            setSpreadsheetIdState(res.spreadsheetId);
-            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, res.spreadsheetId);
-          }
-          showToast(`บันทึกการขายสำเร็จ และส่งยอดเข้า Google Sheet แล้ว (${newSaleItems.length} รายการ)`, 'success');
-          addAuditLog('Google Sync', `ส่งยอดบิล ${billId} (${newSaleItems.length} รายการ) เข้า Google Sheet เรียบร้อย`, 'success');
-        })
-        .catch((err) => {
-          console.warn('Auto sync to Google Sheet warning:', err);
-          showToast(`บันทึกบิลในระบบแล้ว แต่ส่ง Google Sheet ไม่สำเร็จ: ${err.message || 'ตรวจพบปัญหาการเชื่อมต่อ'}`, 'error');
-        });
-    } else {
-      showToast(`บันทึกการขายบิล ${billId} สำเร็จ ยอด ฿${billTotal.toLocaleString()}`, 'success');
-    }
+    showToast(`บันทึกการขายบิล ${billId} สำเร็จ ยอด ฿${billTotal.toLocaleString()}`, 'success');
 
     return billId;
   };
@@ -1883,12 +1783,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setStoredData(StorageKeys.MKS_DAY, []);
       setMarketShareWeekly([]);
       setStoredData(StorageKeys.MKS_WEEK, []);
-      setGoogleConnected(false);
-      setSpreadsheetIdState('');
-      setSyncStatus('idle');
-      setSyncError(null);
-      setLastSyncTime(null);
-      setCatalogSyncTime(null);
 
       // 4. Reset audit log with initial clean marker
       const initialLogs = [
@@ -1917,585 +1811,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Google Integration State
-  const [googleConnected, setGoogleConnected] = useState<boolean>(() => {
-    return !!getStoredData<string | null>(StorageKeys.GOOGLE_SHEET_CONFIG, null);
-  });
-  const [spreadsheetId, setSpreadsheetIdState] = useState<string>(() => {
-    return getStoredData<string>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, '');
-  });
-  const [spreadsheetName, setSpreadsheetNameState] = useState<string>(() => {
-    return getStoredData<string>('nippon_google_sheet_name', 'Google Spreadsheet');
-  });
-  const [googleWebhookUrl, setGoogleWebhookUrlState] = useState<string>(() => {
-    return getStoredData<string>(StorageKeys.GOOGLE_WEBHOOK_URL, '');
-  });
-  const [autoSyncSheets, setAutoSyncSheetsState] = useState<boolean>(() => {
-    return getStoredData<boolean>(StorageKeys.GOOGLE_AUTO_SYNC, true);
-  });
-  const [syncedSaleIds, setSyncedSaleIds] = useState<string[]>(() => {
-    return getStoredData<string[]>(StorageKeys.GOOGLE_SYNCED_IDS, []);
-  });
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
-    return getStoredData<string | null>(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, null);
-  });
-
-  // Auto-backup: สำรองข้อมูลทั้ง 5 แท็บไป Google Sheets เป็นรอบๆ โดยอัตโนมัติ ตราบใดที่แอปเปิดอยู่
-  // (ทำงานเฉพาะตอนเปิดแอปอยู่ในเบราว์เซอร์เท่านั้น — ถ้าปิดแอป/ปิดเครื่อง จะ backup รอบถัดไปหลังเปิดแอปใหม่)
-  // ปรับความถี่ได้ที่ AUTO_BACKUP_INTERVAL_MS ด้านล่าง (ค่าเริ่มต้น: ทุก 30 นาที)
-  const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
-  const syncAllTabsToGoogleRef = useRef<() => Promise<void>>();
-  useEffect(() => {
-    if (!googleWebhookUrl) return;
-    const timer = setInterval(() => {
-      syncAllTabsToGoogleRef.current?.().catch((err: any) => {
-        console.warn('[AutoBackup] Periodic Google Sheets backup failed:', err);
-      });
-    }, AUTO_BACKUP_INTERVAL_MS);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleWebhookUrl]);
-
-  // Multi-Device & Google Drive state
-  const [isGoogleOAuthConnected, setIsGoogleOAuthConnected] = useState<boolean>(() => {
-    return GoogleSheetsService.isTokenValid();
-  });
-  const [driveSpreadsheets, setDriveSpreadsheets] = useState<DriveSpreadsheetItem[]>([]);
-  const [isLoadingDriveFiles, setIsLoadingDriveFiles] = useState<boolean>(false);
-  const [cloudSpreadsheetInfo, setCloudSpreadsheetInfo] = useState<CloudSpreadsheetInfo | null>(null);
-
-  // Periodic check for token validity
-  useEffect(() => {
-    const checkToken = () => {
-      setIsGoogleOAuthConnected(GoogleSheetsService.isTokenValid());
-    };
-    checkToken();
-    const interval = setInterval(checkToken, 4000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // 1. Check URL parameters for instant configuration (e.g. ?webhook=...&sheetId=...)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const paramWebhook = params.get('webhook') || params.get('googleWebhookUrl');
-        const paramSheetId = params.get('sheetId') || params.get('spreadsheetId') || params.get('sheet');
-
-        if (paramWebhook && paramWebhook.trim()) {
-          const cleanWebhook = paramWebhook.trim();
-          setGoogleWebhookUrlState(cleanWebhook);
-          setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, cleanWebhook);
-          const configDocRef = doc(db, 'system_config', 'google_sheets');
-          setDoc(configDocRef, { webhookUrl: cleanWebhook, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-        }
-        if (paramSheetId && paramSheetId.trim()) {
-          const cleanId = GoogleSheetsService.extractSpreadsheetId(paramSheetId);
-          setSpreadsheetIdState(cleanId);
-          setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, cleanId);
-          const configDocRef = doc(db, 'system_config', 'google_sheets');
-          setDoc(configDocRef, { spreadsheetId: cleanId, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-        }
-      } catch (e) {
-        console.warn('URL param parse error:', e);
-      }
-    }
-  }, []);
-
-  // 2. Real-time Cloud Sync with Firestore for Google Sheets settings
-  // Ensures shared link, mobile, and secondary machines all share the same Google Sheets connection seamlessly
-  useEffect(() => {
-    const configDocRef = doc(db, 'system_config', 'google_sheets');
-
-    // Fetch initial doc
-    getDoc(configDocRef)
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.webhookUrl) {
-            setGoogleWebhookUrlState(data.webhookUrl);
-            setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, data.webhookUrl);
-          }
-          if (data.spreadsheetId) {
-            setSpreadsheetIdState(data.spreadsheetId);
-            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, data.spreadsheetId);
-          }
-          if (data.spreadsheetName) {
-            setSpreadsheetNameState(data.spreadsheetName);
-            setStoredData('nippon_google_sheet_name', data.spreadsheetName);
-          }
-          if (data.spreadsheetId) {
-            setCloudSpreadsheetInfo({
-              spreadsheetId: data.spreadsheetId,
-              spreadsheetName: data.spreadsheetName || 'สเปรดชีตหลัก (Cloud)',
-              spreadsheetUrl: data.spreadsheetUrl || GoogleSheetsService.getSpreadsheetUrl(data.spreadsheetId),
-              lastSyncTime: data.lastSyncTime,
-              updatedAt: data.updatedAt,
-              ownerEmail: data.ownerEmail,
-            });
-          }
-          if (typeof data.autoSync === 'boolean') {
-            setAutoSyncSheetsState(data.autoSync);
-            setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, data.autoSync);
-          }
-          if (data.lastSyncTime) {
-            setLastSyncTime(data.lastSyncTime);
-            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, data.lastSyncTime);
-          }
-        }
-      })
-      .catch((err) => {
-        console.warn('Firestore initial sheet config fetch skipped:', err);
-      });
-
-    // Subscribe to real-time changes across all connected devices
-    const unsub = onSnapshot(
-      configDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.webhookUrl) {
-            setGoogleWebhookUrlState((prev) => {
-              if (prev !== data.webhookUrl) {
-                setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, data.webhookUrl);
-                return data.webhookUrl;
-              }
-              return prev;
-            });
-          }
-          if (data.spreadsheetId) {
-            setCloudSpreadsheetInfo({
-              spreadsheetId: data.spreadsheetId,
-              spreadsheetName: data.spreadsheetName || 'สเปรดชีตหลัก (Cloud)',
-              spreadsheetUrl: data.spreadsheetUrl || GoogleSheetsService.getSpreadsheetUrl(data.spreadsheetId),
-              lastSyncTime: data.lastSyncTime,
-              updatedAt: data.updatedAt,
-              ownerEmail: data.ownerEmail,
-            });
-            setSpreadsheetIdState((prev) => {
-              if (prev !== data.spreadsheetId) {
-                setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, data.spreadsheetId);
-                return data.spreadsheetId;
-              }
-              return prev;
-            });
-          }
-          if (data.spreadsheetName) {
-            setSpreadsheetNameState((prev) => {
-              if (prev !== data.spreadsheetName) {
-                setStoredData('nippon_google_sheet_name', data.spreadsheetName);
-                return data.spreadsheetName;
-              }
-              return prev;
-            });
-          }
-          if (typeof data.autoSync === 'boolean') {
-            setAutoSyncSheetsState(data.autoSync);
-            setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, data.autoSync);
-          }
-          if (data.lastSyncTime) {
-            setLastSyncTime(data.lastSyncTime);
-            setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, data.lastSyncTime);
-          }
-        }
-      },
-      (err) => {
-        console.warn('Firestore snapshot listener for sheets error:', err);
-      }
-    );
-
-    return () => unsub();
-  }, []);
-
-  const spreadsheetUrl = useMemo(() => {
-    return GoogleSheetsService.getSpreadsheetUrl(spreadsheetId);
-  }, [spreadsheetId]);
-
-  const unsyncedSaleCount = useMemo(() => {
-    const syncedSet = new Set(syncedSaleIds);
-    return sales.filter((s) => !syncedSet.has(s.id)).length;
-  }, [sales, syncedSaleIds]);
-
-  const setSpreadsheetId = async (id: string, name?: string) => {
-    const cleaned = GoogleSheetsService.extractSpreadsheetId(id);
-    setSpreadsheetIdState(cleaned);
-    setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, cleaned);
-
-    const sheetTitle = name || `สเปรดชีต (${cleaned.substring(0, 8)}...)`;
-    setSpreadsheetNameState(sheetTitle);
-    setStoredData('nippon_google_sheet_name', sheetTitle);
-
-    // Save to Firestore so it syncs across all links & devices
-    try {
-      const configDocRef = doc(db, 'system_config', 'google_sheets');
-      const payload: any = {
-        spreadsheetId: cleaned,
-        spreadsheetName: sheetTitle,
-        spreadsheetUrl: GoogleSheetsService.getSpreadsheetUrl(cleaned),
-        updatedAt: new Date().toISOString(),
-        ownerEmail: userSession.email || 'pc-app@nippon.com',
-      };
-      await setDoc(configDocRef, payload, { merge: true });
-      DualWriteClient.syncSystemConfig('google_sheets', payload).catch(console.warn);
-      setCloudSpreadsheetInfo((prev) => ({ ...prev, ...payload }));
-    } catch (e) {
-      console.warn('Could not save spreadsheetId to Firestore:', e);
-    }
-
-    showToast('บันทึก Spreadsheet ID เรียบร้อย (เชื่อมโยง Cloud ทุกเครื่อง)', 'success');
-  };
-
-  const selectSpreadsheet = async (id: string, name?: string) => {
-    await setSpreadsheetId(id, name);
-  };
-
-  const connectGoogleOAuth = async () => {
-    try {
-      showToast('กำลังเชื่อมต่อบัญชี Google...', 'info');
-      const token = await GoogleSheetsService.requestOAuthToken(false);
-      setIsGoogleOAuthConnected(true);
-      setGoogleConnected(true);
-      setStoredData(StorageKeys.GOOGLE_SHEET_CONFIG, 'connected');
-      const userEmail = localStorage.getItem('nippon_google_user_email') || userSession.email;
-      showToast('เชื่อมต่อ Google สำเร็จแล้ว พร้อมใช้งาน Google Sheets & Drive', 'success');
-      addAuditLog('Google Sync', `เชื่อมต่อ Google OAuth สำเร็จ (${userEmail || 'บัญชี Google'})`, 'success');
-
-      // Auto load drive files
-      loadDriveSpreadsheets(token).catch(() => {});
-    } catch (err: any) {
-      console.error('Google OAuth error:', err);
-      showToast(err.message || 'เชื่อมต่อ Google ไม่สำเร็จ', 'error');
-    }
-  };
-
-  const disconnectGoogleOAuth = () => {
-    GoogleSheetsService.clearToken();
-    setIsGoogleOAuthConnected(false);
-    setDriveSpreadsheets([]);
-    showToast('ยกเลิกการเชื่อมต่อบัญชี Google แล้ว', 'info');
-    addAuditLog('Google Sync', 'ยกเลิกการเชื่อมต่อ Google OAuth', 'warning');
-  };
-
-  const loadDriveSpreadsheets = async (overrideToken?: string) => {
-    setIsLoadingDriveFiles(true);
-    try {
-      const files = await GoogleSheetsService.listSpreadsheetsFromDrive(overrideToken);
-      setDriveSpreadsheets(files);
-      if (files.length === 0) {
-        showToast('ไม่พบไฟล์ Google Spreadsheet ใน Google Drive', 'info');
-      } else {
-        showToast(`โหลดรายชื่อสเปรดชีตจาก Google Drive สำเร็จ (${files.length} ไฟล์)`, 'success');
-      }
-    } catch (err: any) {
-      console.warn('loadDriveSpreadsheets warning:', err);
-      showToast(err.message || 'ไม่สามารถโหลดไฟล์จาก Google Drive ได้', 'error');
-    } finally {
-      setIsLoadingDriveFiles(false);
-    }
-  };
-
-  const createNewCloudSpreadsheet = async (customTitle?: string) => {
-    try {
-      let activeToken = GoogleSheetsService.getToken();
-      if (!activeToken) {
-        showToast('กำลังเข้าสู่ระบบ Google เพื่อขอสิทธิ์สร้างไฟล์ใน Google Drive...', 'info');
-        activeToken = await GoogleSheetsService.requestOAuthToken(false);
-        setIsGoogleOAuthConnected(true);
-        setGoogleConnected(true);
-        setStoredData(StorageKeys.GOOGLE_SHEET_CONFIG, 'connected');
-        loadDriveSpreadsheets(activeToken).catch(() => {});
-      }
-
-      showToast('กำลังสร้าง Google Spreadsheet ใหม่พร้อม 5 แท็บ...', 'info');
-      const title = customTitle || `${brandSettings.brandName} — บันทึกยอดขาย & รายงาน (Real-time)`;
-      const created = await GoogleSheetsService.createSpreadsheet(title, brandSettings.brandName, activeToken);
-
-      await selectSpreadsheet(created.id, created.title);
-      showToast(`สร้างและเชื่อมต่อ Google Sheet: "${created.title}" สำเร็จแล้ว!`, 'success');
-      addAuditLog('Google Sync', `สร้าง Google Spreadsheet ใหม่ [${created.title}] (ID: ${created.id})`, 'success');
-    } catch (err: any) {
-      console.warn('Create spreadsheet warning:', err);
-      const msg = err?.message || 'สร้างสเปรดชีตไม่สำเร็จ';
-      showToast(msg, 'error');
-      throw err;
-    }
-  };
-
-  const pullSalesFromGoogleSheet = async (): Promise<number> => {
-    const targetId = spreadsheetId || cloudSpreadsheetInfo?.spreadsheetId;
-    if (!targetId) {
-      showToast('กรุณาเลือกหรือระบุ Google Sheet ก่อนดึงข้อมูล', 'error');
-      return 0;
-    }
-
-    try {
-      showToast('กำลังดึงยอดขายจาก Google Sheet...', 'info');
-      const sheetSales = await GoogleSheetsService.fetchSalesFromGoogleSheet(targetId);
-      if (!sheetSales || sheetSales.length === 0) {
-        showToast('ไม่พบรายการขายในแท็บ Sales_Transactions ใน Google Sheet', 'info');
-        return 0;
-      }
-
-      // Merge with existing sales, avoiding duplicates by billId + productName + size + quantity
-      const existingKeySet = new Set(
-        sales.map((s) => `${s.billId}_${s.productName}_${s.size}_${s.quantity}_${s.total}`)
-      );
-
-      const newRecords: SaleItem[] = [];
-      sheetSales.forEach((s) => {
-        const key = `${s.billId}_${s.productName}_${s.size}_${s.quantity}_${s.total}`;
-        if (!existingKeySet.has(key)) {
-          newRecords.push(s);
-          existingKeySet.add(key);
-        }
-      });
-
-      if (newRecords.length > 0) {
-        const merged = [...newRecords, ...sales];
-        setSales(merged);
-        setStoredData(StorageKeys.SALES, merged);
-
-        const allIds = sheetSales.map((s) => s.id);
-        setSyncedSaleIds((prev) => Array.from(new Set([...prev, ...allIds])));
-        setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, Array.from(new Set([...syncedSaleIds, ...allIds])));
-
-        showToast(
-          `ดึงยอดขายสำเร็จ! เพิ่มรายการใหม่จาก Google Sheet จำนวน ${newRecords.length} รายการ (รวมทั้งสิ้น ${sheetSales.length} รายการ)`,
-          'success'
-        );
-        addAuditLog('Google Sync', `ดึงข้อมูลจาก Google Sheet เข้ามาในเครื่อง ${newRecords.length} รายการใหม่`, 'success');
-      } else {
-        showToast(`ข้อมูลในเครื่องอัปเดตตรงกับ Google Sheet แล้ว (พบ ${sheetSales.length} รายการ)`, 'info');
-      }
-
-      return newRecords.length;
-    } catch (err: any) {
-      console.error('pullSalesFromGoogleSheet error:', err);
-      showToast(err.message || 'ไม่สามารถดึงยอดขายจาก Google Sheet ได้', 'error');
-      throw err;
-    }
-  };
-
-  const openSpreadsheetViewer = () => {
-    setModalOpen('google-sheet-viewer');
-  };
-
-  const closeSpreadsheetViewer = () => {
-    if (modalOpen === 'google-sheet-viewer') {
-      setModalOpen(null);
-    }
-  };
-
-  const setGoogleWebhookUrl = async (url: string) => {
-    const trimmed = url.trim();
-    setGoogleWebhookUrlState(trimmed);
-    setStoredData(StorageKeys.GOOGLE_WEBHOOK_URL, trimmed);
-
-    // Save to Firestore so it syncs across all links & devices
-    try {
-      const configDocRef = doc(db, 'system_config', 'google_sheets');
-      const payload = { webhookUrl: trimmed, updatedAt: new Date().toISOString() };
-      await setDoc(configDocRef, payload, { merge: true });
-      DualWriteClient.syncSystemConfig('google_sheets', payload).catch(console.warn);
-    } catch (e) {
-      console.warn('Could not save webhookUrl to Firestore:', e);
-    }
-
-    showToast('บันทึก Webhook URL เรียบร้อย (เชื่อมต่อกับชีตทุกลิงก์และทุกอุปกรณ์)', 'success');
-  };
-
-  const setAutoSyncSheets = async (val: boolean) => {
-    setAutoSyncSheetsState(val);
-    setStoredData(StorageKeys.GOOGLE_AUTO_SYNC, val);
-
-    try {
-      const configDocRef = doc(db, 'system_config', 'google_sheets');
-      const payload = { autoSync: val, updatedAt: new Date().toISOString() };
-      await setDoc(configDocRef, payload, { merge: true });
-      DualWriteClient.syncSystemConfig('google_sheets', payload).catch(console.warn);
-    } catch (e) {
-      console.warn('Could not save autoSync to Firestore:', e);
-    }
-
-    showToast(val ? 'เปิดระบบซิงค์ Google Sheets อัตโนมัติแล้ว' : 'ปิดระบบซิงค์อัตโนมัติแล้ว', 'info');
-  };
-
-  const connectGoogle = () => {
-    setGoogleConnected(true);
-    setStoredData(StorageKeys.GOOGLE_SHEET_CONFIG, 'connected');
-    addAuditLog('Google Sync', 'เชื่อมต่อบัญชี Google สำหรับ Sheets & Drive เรียบร้อย', 'success');
-    showToast('เชื่อมต่อกับบัญชี Google สำเร็จ', 'success');
-  };
-
-  const disconnectGoogle = () => {
-    setGoogleConnected(false);
-    setStoredData(StorageKeys.GOOGLE_SHEET_CONFIG, null);
-    addAuditLog('Google Sync', 'ยกเลิกการเชื่อมต่อ Google Sheets', 'warning');
-    showToast('ยกเลิกการเชื่อมต่อ Google Sheets แล้ว', 'info');
-  };
-
-  const syncWithGoogle = async (targetSales?: SaleItem[]) => {
-    const items = targetSales && targetSales.length > 0
-      ? targetSales
-      : (sales.length > 0 ? sales : []);
-
-    if (items.length === 0) {
-      showToast('ไม่มียอดขายที่จะส่งไปยัง Google Sheets', 'info');
-      return;
-    }
-
-    if (!googleWebhookUrl && !spreadsheetId && !GoogleSheetsService.getToken()) {
-      const msg = 'กรุณาระบุ Webhook URL หรือ Spreadsheet ID ในหน้าซิงค์ข้อมูลก่อนเริ่มส่งยอด';
-      setSyncError(msg);
-      showToast(msg, 'error');
-      return;
-    }
-
-    setSyncStatus('syncing');
-    setSyncError(null);
-
-    try {
-      const res = await GoogleSheetsService.pushSalesToSheet(items, {
-        spreadsheetId,
-        webhookUrl: googleWebhookUrl,
-        spreadsheetTitle: `${brandSettings.brandName} รายงานยอดขาย`,
-      });
-
-      const syncedIds = items.map((s) => s.id);
-      setSyncedSaleIds((prev) => {
-        const next = Array.from(new Set([...prev, ...syncedIds]));
-        setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, next);
-        return next;
-      });
-
-      const now = new Date().toLocaleTimeString('th-TH');
-      setLastSyncTime(now);
-      setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, now);
-
-      // Persist last sync time to Firestore
-      try {
-        const configDocRef = doc(db, 'system_config', 'google_sheets');
-        setDoc(configDocRef, { lastSyncTime: now, lastSyncTimestamp: Date.now() }, { merge: true }).catch(() => {});
-      } catch (e) {}
-
-      if (res.spreadsheetId && !spreadsheetId) {
-        setSpreadsheetIdState(res.spreadsheetId);
-        setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_id`, res.spreadsheetId);
-      }
-
-      setSyncStatus('success');
-      addAuditLog('Google Sync', `ซิงค์ข้อมูลกับ Google Spreadsheet สำเร็จ (${items.length} รายการ)`, 'success');
-      showToast(`ซิงค์ข้อมูลไปยัง Google Sheets สำเร็จ (${items.length} รายการ)`, 'success');
-    } catch (err: any) {
-      setSyncStatus('error');
-      const msg = err.message || 'ไม่สามารถซิงค์ได้';
-      setSyncError(msg);
-      showToast(`เกิดข้อผิดพลาดในการซิงค์: ${msg}`, 'error');
-      throw err;
-    }
-  };
-
-  const exportSalesToCsv = () => {
-    try {
-      GoogleSheetsService.exportSalesCsv(
-        sales,
-        `${brandSettings.brandName.replace(/\s+/g, '_')}_Sales_${new Date().toISOString().slice(0, 10)}.csv`
-      );
-      showToast('ดาวน์โหลดไฟล์ CSV สำหรับเปิดใน Google Sheets สำเร็จ', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'ไม่สามารถส่งออกไฟล์ได้', 'error');
-    }
-  };
-
-  const copySalesToClipboard = async () => {
-    try {
-      await GoogleSheetsService.copySalesTsv(sales);
-      showToast('คัดลอกตารางยอดขายแล้ว! สามารถกด Ctrl+V วางลงใน Google Sheet ได้ทันที', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'คัดลอกข้อมูลไม่สำเร็จ', 'error');
-    }
-  };
-
-  const syncAllTabsToGoogle = async () => {
-    if (!googleWebhookUrl) {
-      const msg = 'กรุณาระบุ Google Apps Script Webhook URL ในหน้าซิงค์ข้อมูลเพื่อเปิดใช้ระบบ 5 ชีตในคลิกเดียว';
-      setSyncError(msg);
-      showToast(msg, 'error');
-      setActiveTab('sheets-sync');
-      return;
-    }
-
-    setSyncStatus('syncing');
-    setSyncError(null);
-
-    try {
-      await GoogleSheetsService.pushAllTabsViaWebhook(googleWebhookUrl, {
-        sales,
-        customers,
-        catalog: catalogItems,
-        stock: computedStock,
-        commission: computedCommission,
-        salesperson: userSession.name,
-        branch: brandSettings.branch,
-      });
-
-      const syncedIds = sales.map((s) => s.id);
-      setSyncedSaleIds(syncedIds);
-      setStoredData(StorageKeys.GOOGLE_SYNCED_IDS, syncedIds);
-
-      const now = new Date().toLocaleTimeString('th-TH');
-      setLastSyncTime(now);
-      setStoredData(`${StorageKeys.GOOGLE_SHEET_CONFIG}_time`, now);
-
-      try {
-        const configDocRef = doc(db, 'system_config', 'google_sheets');
-        setDoc(configDocRef, { lastSyncTime: now, lastSyncTimestamp: Date.now() }, { merge: true }).catch(() => {});
-      } catch (e) {}
-
-      setSyncStatus('success');
-      addAuditLog('Google Sync', `ซิงค์ข้อมูลครบทั้ง 5 แท็บ (ยอดขาย, ลูกค้า, สินค้า, สต็อก, คอมมิชชั่น) ลง Google Sheet สำเร็จ`, 'success');
-      showToast('⚡ ซิงค์ครบทั้ง 5 แท็บลง Google Sheet เรียบร้อยแล้ว!', 'success');
-    } catch (err: any) {
-      setSyncStatus('error');
-      const msg = err.message || 'ไม่สามารถซิงค์ได้';
-      setSyncError(msg);
-      showToast(`เกิดข้อผิดพลาดในการซิงค์: ${msg}`, 'error');
-      throw err;
-    }
-  };
-  // เก็บฟังก์ชันเวอร์ชันล่าสุด (ที่มีข้อมูล state ล่าสุด) ไว้ให้ตัวจับเวลา auto-backup ด้านบนเรียกใช้
-  syncAllTabsToGoogleRef.current = syncAllTabsToGoogle;
-
-  const exportAllTabsToExcel = () => {
-    try {
-      const filename = `${brandSettings.brandName.replace(/\s+/g, '_')}_Master_Data_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      GoogleSheetsService.exportMultiTabExcel({
-        sales,
-        customers,
-        catalog: catalogItems,
-        stock: computedStock,
-        commission: computedCommission,
-        salesperson: userSession.name,
-        branch: brandSettings.branch,
-      }, filename);
-      showToast('📥 ดาวน์โหลดไฟล์ Excel รวม 5 แท็บสำเร็จแล้ว (นำเข้า Google Sheet ได้ทันที)', 'success');
-    } catch (err: any) {
-      showToast(`ส่งออกไฟล์ไม่สำเร็จ: ${err.message || ''}`, 'error');
-    }
-  };
-
-  const openSpreadsheet = () => {
-    const targetUrl = spreadsheetUrl || (spreadsheetId ? GoogleSheetsService.getSpreadsheetUrl(spreadsheetId) : '');
-    if (targetUrl) {
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
-    } else {
-      showToast('ยังไม่ได้ระบุลิงก์ Google Sheet • กรุณาวางลิงก์ในหน้าซิงค์ข้อมูล', 'info');
-      setActiveTab('sheets-sync');
-    }
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -2509,7 +1824,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateUserSession,
         isAuthReady,
         isAuthenticated,
-        loginWithGoogle,
         logout,
         isOnline,
         catalogItems,
@@ -2517,8 +1831,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateCatalogItem,
         deleteCatalogItem,
         importCatalogItems,
-        syncCatalogToGoogle,
-        catalogSyncTime,
         products,
         addProduct,
         updateProduct,
@@ -2570,40 +1882,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         availableMonths,
         allTimeSalesTotal,
         allTimeSalesCount,
-        googleConnected,
-        connectGoogle,
-        disconnectGoogle,
-        spreadsheetId,
-        spreadsheetName,
-        spreadsheetUrl,
-        setSpreadsheetId,
-        googleWebhookUrl,
-        setGoogleWebhookUrl,
-        autoSyncSheets,
-        setAutoSyncSheets,
-        unsyncedSaleCount,
-        syncedSaleIds,
-        syncWithGoogle,
-        syncStatus,
-        syncError,
-        lastSyncTime,
-        exportSalesToCsv,
-        copySalesToClipboard,
-        syncAllTabsToGoogle,
-        exportAllTabsToExcel,
-        openSpreadsheet,
-        isGoogleOAuthConnected,
-        connectGoogleOAuth,
-        disconnectGoogleOAuth,
-        driveSpreadsheets,
-        isLoadingDriveFiles,
-        loadDriveSpreadsheets,
-        cloudSpreadsheetInfo,
-        selectSpreadsheet,
-        createNewCloudSpreadsheet,
-        pullSalesFromGoogleSheet,
-        openSpreadsheetViewer,
-        closeSpreadsheetViewer,
       }}
     >
       {children}
