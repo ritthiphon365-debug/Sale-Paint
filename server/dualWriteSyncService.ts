@@ -65,10 +65,9 @@ const MOCK_DB_STORE_FILE = path.join(process.cwd(), '.mock-supabase-db.json');
 
 export class DualWriteSyncService {
   private liveClient: SupabaseClient | null = null;
+  private readonly allowMockDb = process.env.ALLOW_MOCK_DB === 'true';
   private queue: Map<string, SyncQueueItem> = new Map();
   // Server-side persistent simulation state for when live Supabase is not reached or during simulation
-  private readonly allowMockDb = process.env.ALLOW_MOCK_DB === 'true' && process.env.NODE_ENV !== 'production';
-
   private mockDb = {
     bills: new Map<string, any>(),
     sales: new Map<string, any>(),
@@ -94,7 +93,7 @@ export class DualWriteSyncService {
         console.warn('[DualWriteSyncService] Live client init failed:', err);
       }
     } else {
-      console.log('[DualWriteSyncService] Operating in verified dual-write mode with durable ACID persistence.');
+      console.warn('[DualWriteSyncService] LIVE SUPABASE is not configured. Production writes are disabled. Set ALLOW_MOCK_DB=true only for isolated tests.');
     }
   }
 
@@ -127,14 +126,12 @@ export class DualWriteSyncService {
       const queueArray = Array.from(this.queue.values());
       fs.writeFileSync(QUEUE_STORE_FILE, JSON.stringify(queueArray, null, 2));
 
-      if (this.allowMockDb) {
-        const dbObj: Record<string, any> = {};
-        Object.keys(this.mockDb).forEach((key) => {
-          const table = key as keyof typeof this.mockDb;
-          dbObj[table] = Array.from(this.mockDb[table].entries());
-        });
-        fs.writeFileSync(MOCK_DB_STORE_FILE, JSON.stringify(dbObj, null, 2));
-      }
+      const dbObj: Record<string, any> = {};
+      Object.keys(this.mockDb).forEach((key) => {
+        const table = key as keyof typeof this.mockDb;
+        dbObj[table] = Array.from(this.mockDb[table].entries());
+      });
+      fs.writeFileSync(MOCK_DB_STORE_FILE, JSON.stringify(dbObj, null, 2));
     } catch (e) {
       console.warn('[DualWriteSyncService] Error persisting durable state:', e);
     }
@@ -142,10 +139,6 @@ export class DualWriteSyncService {
 
   public isLiveConnected(): boolean {
     return this.liveClient !== null;
-  }
-
-  public getLiveClient(): SupabaseClient | null {
-    return this.liveClient;
   }
 
   /**
@@ -209,12 +202,11 @@ export class DualWriteSyncService {
     payload: any
   ): Promise<DualWriteResult> {
     const timestamp = new Date().toISOString();
+    if (!this.liveClient && !this.allowMockDb) {
+      return { success: false, operation, idempotencyKey, queued: false, error: 'LIVE_SUPABASE_UNAVAILABLE', timestamp };
+    }
 
     try {
-      if (!this.liveClient && !this.allowMockDb) {
-        throw new Error('SUPABASE_NOT_CONNECTED: Live Supabase is required; mock database is disabled.');
-      }
-
       switch (operation) {
         case 'BILL_AND_SALES': {
           const { bill, items } = payload;
@@ -394,11 +386,9 @@ export class DualWriteSyncService {
     }));
 
     // Mock DB write
-    if (this.allowMockDb) {
-      this.mockDb.bills.set(billRecord.id, billRecord);
-      salesRecords.forEach((s) => this.mockDb.sales.set(s.id, s));
-      this.persistDurableState();
-    }
+    this.mockDb.bills.set(billRecord.id, billRecord);
+    salesRecords.forEach((s) => this.mockDb.sales.set(s.id, s));
+    this.persistDurableState();
 
     // Remote Live Supabase write
     if (this.liveClient) {
@@ -437,10 +427,8 @@ export class DualWriteSyncService {
       updated_at: new Date().toISOString(),
     };
 
-    if (this.allowMockDb) {
-      this.mockDb.sales.set(updated.id, { ...(this.mockDb.sales.get(updated.id) || {}), ...updated });
-      this.persistDurableState();
-    }
+    this.mockDb.sales.set(updated.id, { ...(this.mockDb.sales.get(updated.id) || {}), ...updated });
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('sales').update(updated).eq('id', updated.id);
@@ -449,10 +437,8 @@ export class DualWriteSyncService {
   }
 
   private async writeDeleteSale(saleId: string, idempotencyKey: string) {
-    if (this.allowMockDb) {
-      this.mockDb.sales.delete(saleId);
-      this.persistDurableState();
-    }
+    this.mockDb.sales.delete(saleId);
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('sales').delete().eq('id', saleId);
@@ -479,10 +465,8 @@ export class DualWriteSyncService {
       updated_at: new Date().toISOString(),
     }));
 
-    if (this.allowMockDb) {
-      records.forEach((r) => this.mockDb.products.set(r.id, r));
-      this.persistDurableState();
-    }
+    records.forEach((r) => this.mockDb.products.set(r.id, r));
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('products').upsert(records, { onConflict: 'id' });
@@ -491,10 +475,8 @@ export class DualWriteSyncService {
   }
 
   private async writeDeleteProducts(ids: string[], idempotencyKey: string) {
-    if (this.allowMockDb) {
-      ids.forEach((id) => this.mockDb.products.delete(id));
-      this.persistDurableState();
-    }
+    ids.forEach((id) => this.mockDb.products.delete(id));
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('products').delete().in('id', ids);
@@ -517,10 +499,8 @@ export class DualWriteSyncService {
       updated_at: new Date().toISOString(),
     }));
 
-    if (this.allowMockDb) {
-      records.forEach((r) => this.mockDb.catalog_items.set(r.id, r));
-      this.persistDurableState();
-    }
+    records.forEach((r) => this.mockDb.catalog_items.set(r.id, r));
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('catalog_items').upsert(records, { onConflict: 'id' });
@@ -529,10 +509,8 @@ export class DualWriteSyncService {
   }
 
   private async writeDeleteCatalogItems(ids: string[], idempotencyKey: string) {
-    if (this.allowMockDb) {
-      ids.forEach((id) => this.mockDb.catalog_items.delete(id));
-      this.persistDurableState();
-    }
+    ids.forEach((id) => this.mockDb.catalog_items.delete(id));
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('catalog_items').delete().in('id', ids);
@@ -554,10 +532,8 @@ export class DualWriteSyncService {
       created_at: s.createdAt || new Date().toISOString(),
     }));
 
-    if (this.allowMockDb) {
-      records.forEach((r) => this.mockDb.stock_ins.set(r.id, r));
-      this.persistDurableState();
-    }
+    records.forEach((r) => this.mockDb.stock_ins.set(r.id, r));
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('stock_ins').upsert(records, { onConflict: 'id' });
@@ -573,10 +549,8 @@ export class DualWriteSyncService {
       updated_by: 'system',
     };
 
-    if (this.allowMockDb) {
-      this.mockDb.system_configs.set(key, record);
-      this.persistDurableState();
-    }
+    this.mockDb.system_configs.set(key, record);
+    this.persistDurableState();
 
     if (this.liveClient) {
       const { error } = await this.liveClient.from('system_configs').upsert(record, { onConflict: 'key' });

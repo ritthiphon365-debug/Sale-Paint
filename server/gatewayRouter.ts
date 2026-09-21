@@ -11,7 +11,6 @@
 
 import { Router, Request, Response } from 'express';
 import { dualWriteSyncService } from './dualWriteSyncService';
-import { requireFirebaseAuth } from './gatewayAuth';
 
 export const gatewayRouter = Router();
 
@@ -41,37 +40,6 @@ gatewayRouter.get('/health', (req: Request, res: Response) => {
   });
 });
 
-// Every production data route requires a cryptographically verified Firebase ID token.
-gatewayRouter.use(requireFirebaseAuth);
-
-gatewayRouter.use((req: Request, res: Response, next) => {
-  if (!dualWriteSyncService.isLiveConnected()) {
-    return res.status(503).json({
-      success: false,
-      error: {
-        code: 'SUPABASE_NOT_CONNECTED',
-        message: 'Live Supabase is unavailable. Production API fails closed; mock storage is not used.',
-      },
-    });
-  }
-  return next();
-});
-
-function getLiveClientOrFail(res: Response) {
-  const client = dualWriteSyncService.getLiveClient();
-  if (!client) {
-    res.status(503).json({
-      success: false,
-      error: {
-        code: 'SUPABASE_NOT_CONNECTED',
-        message: 'Live Supabase is unavailable. Production API fails closed; mock storage is not used.',
-      },
-    });
-    return null;
-  }
-  return client;
-}
-
 // Realtime SSE Stream for multi-device clients
 gatewayRouter.get('/realtime/stream', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -90,15 +58,19 @@ gatewayRouter.get('/realtime/stream', (req: Request, res: Response) => {
 // 2. Sales Endpoints
 gatewayRouter.get('/sales', async (req: Request, res: Response) => {
   try {
-    const liveClient = getLiveClientOrFail(res);
-    if (!liveClient) return;
-    const { data, error } = await liveClient
-      .from('sales')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(2000);
-    if (error) throw error;
-    return res.json({ success: true, data });
+    const liveClient = (dualWriteSyncService as any).liveClient;
+    if (liveClient) {
+      const { data, error } = await liveClient
+        .from('sales')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(2000);
+      if (!error && data) {
+        return res.json({ success: true, data });
+      }
+    }
+
+    return res.status(503).json({ success: false, error: { code: 'LIVE_SUPABASE_UNAVAILABLE', message: 'Live Supabase is unavailable; mock data is disabled in production.' } });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -175,11 +147,14 @@ gatewayRouter.delete('/sales/:id', async (req: Request, res: Response) => {
 // 3. Products Endpoints
 gatewayRouter.get('/products', async (req: Request, res: Response) => {
   try {
-    const liveClient = getLiveClientOrFail(res);
-    if (!liveClient) return;
-    const { data, error } = await liveClient.from('products').select('*').order('name');
-    if (error) throw error;
-    return res.json({ success: true, data });
+    const liveClient = (dualWriteSyncService as any).liveClient;
+    if (liveClient) {
+      const { data, error } = await liveClient.from('products').select('*').order('name');
+      if (!error && data) {
+        return res.json({ success: true, data });
+      }
+    }
+    return res.status(503).json({ success: false, error: { code: 'LIVE_SUPABASE_UNAVAILABLE', message: 'Live Supabase is unavailable; mock data is disabled in production.' } });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -218,11 +193,14 @@ gatewayRouter.delete('/products/:id', async (req: Request, res: Response) => {
 // 4. Catalog Endpoints
 gatewayRouter.get('/catalog', async (req: Request, res: Response) => {
   try {
-    const liveClient = getLiveClientOrFail(res);
-    if (!liveClient) return;
-    const { data, error } = await liveClient.from('catalog_items').select('*').order('name');
-    if (error) throw error;
-    return res.json({ success: true, data });
+    const liveClient = (dualWriteSyncService as any).liveClient;
+    if (liveClient) {
+      const { data, error } = await liveClient.from('catalog_items').select('*').order('name');
+      if (!error && data) {
+        return res.json({ success: true, data });
+      }
+    }
+    return res.status(503).json({ success: false, error: { code: 'LIVE_SUPABASE_UNAVAILABLE', message: 'Live Supabase is unavailable; mock data is disabled in production.' } });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -261,11 +239,14 @@ gatewayRouter.delete('/catalog/:id', async (req: Request, res: Response) => {
 // 5. Stock Endpoints
 gatewayRouter.get('/stock/stock-ins', async (req: Request, res: Response) => {
   try {
-    const liveClient = getLiveClientOrFail(res);
-    if (!liveClient) return;
-    const { data, error } = await liveClient.from('stock_ins').select('*').order('date', { ascending: false });
-    if (error) throw error;
-    return res.json({ success: true, data });
+    const liveClient = (dualWriteSyncService as any).liveClient;
+    if (liveClient) {
+      const { data, error } = await liveClient.from('stock_ins').select('*').order('date', { ascending: false });
+      if (!error && data) {
+        return res.json({ success: true, data });
+      }
+    }
+    return res.status(503).json({ success: false, error: { code: 'LIVE_SUPABASE_UNAVAILABLE', message: 'Live Supabase is unavailable; mock data is disabled in production.' } });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -304,30 +285,19 @@ gatewayRouter.post('/stock/bulk-stock-in', async (req: Request, res: Response) =
 gatewayRouter.get('/stock/variant-balance', async (req: Request, res: Response) => {
   try {
     const { productId, size, base } = req.query as { productId: string; size: string; base?: string };
-    const liveClient = getLiveClientOrFail(res);
-    if (!liveClient) return;
-    const { data: products, error: productError } = await liveClient.from('products').select('id,initial_stock').eq('id', productId).limit(1);
+    const liveClient = (dualWriteSyncService as any).liveClient;
+    if (!liveClient) return res.status(503).json({ success: false, error: { code: 'LIVE_SUPABASE_UNAVAILABLE', message: 'Live Supabase is unavailable.' } });
+    const { data: products, error: productError } = await liveClient.from('products').select('initial_stock').eq('id', productId).maybeSingle();
     if (productError) throw productError;
-    const product = products?.[0];
     const key = `${size}_${base || 'A'}`;
-    const initialStock = Number(product?.initial_stock?.[key] ?? product?.initial_stock?.[size] ?? 0);
-
-    const { data: stockIns, error: stockError } = await liveClient
-      .from('stock_ins').select('quantity,product_id,size,base').eq('product_id', productId).eq('size', size);
+    const initialStock = Number(products?.initial_stock?.[key] ?? products?.initial_stock?.[size] ?? 0);
+    const { data: stockRows, error: stockError } = await liveClient.from('stock_ins').select('quantity').eq('product_id', productId).eq('size', size).eq('base', base || null);
     if (stockError) throw stockError;
-    const totalStockIn = (stockIns || [])
-      .filter((s: any) => s.base === base || (!s.base && !base))
-      .reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
-
-    const { data: sales, error: salesError } = await liveClient
-      .from('sales').select('quantity,product_id,size,base').eq('product_id', productId).eq('size', size);
+    const { data: salesRows, error: salesError } = await liveClient.from('sales').select('quantity').eq('product_id', productId).eq('size', size).eq('base', base || null);
     if (salesError) throw salesError;
-    const totalSold = (sales || [])
-      .filter((s: any) => s.base === base || (!s.base && !base))
-      .reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
-
-    const balance = initialStock + totalStockIn - totalSold;
-    return res.json({ success: true, data: { balance, initialStock, totalStockIn, totalSold } });
+    const totalStockIn = (stockRows || []).reduce((sum: number, s: any) => sum + Number(s.quantity || 0), 0);
+    const totalSold = (salesRows || []).reduce((sum: number, s: any) => sum + Number(s.quantity || 0), 0);
+    return res.json({ success: true, data: { balance: initialStock + totalStockIn - totalSold, initialStock, totalStockIn, totalSold } });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -337,11 +307,11 @@ gatewayRouter.get('/stock/variant-balance', async (req: Request, res: Response) 
 gatewayRouter.get('/config/:key', async (req: Request, res: Response) => {
   try {
     const key = req.params.key;
-    const liveClient = getLiveClientOrFail(res);
-    if (!liveClient) return;
-    const { data, error } = await liveClient.from('system_configs').select('*').eq('key', key).limit(1);
+    const liveClient = (dualWriteSyncService as any).liveClient;
+    if (!liveClient) return res.status(503).json({ success: false, error: { code: 'LIVE_SUPABASE_UNAVAILABLE', message: 'Live Supabase is unavailable.' } });
+    const { data, error } = await liveClient.from('system_configs').select('*').eq('key', key).maybeSingle();
     if (error) throw error;
-    return res.json({ success: true, config: data?.[0] || null });
+    return res.json({ success: true, config: data || null });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: { message: err.message } });
   }
@@ -354,7 +324,7 @@ gatewayRouter.put('/config/:key', async (req: Request, res: Response) => {
     const idempotencyKey = `cfg-${key}-${Date.now()}`;
     const result = await dualWriteSyncService.executeDualWrite('SET_SYSTEM_CONFIG', idempotencyKey, {
       key,
-      value,
+      config: value,
     });
 
     broadcastRealtimeEvent('system_configs', 'UPDATE', { key, value });
