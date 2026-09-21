@@ -28,7 +28,6 @@ export const SettingsView: React.FC = () => {
     updateBrandSettings,
     userSession,
     updateUserSession,
-    loginWithGoogle,
     logout,
     showToast,
     setModalOpen,
@@ -184,7 +183,7 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="font-semibold text-slate-700 block mb-1">อีเมล (Google Account)</label>
+            <label className="font-semibold text-slate-700 block mb-1">อีเมล</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
@@ -373,7 +372,7 @@ export const SettingsView: React.FC = () => {
               ล้างข้อมูลจากโรงงาน (Full Factory Reset)
             </div>
             <div className="text-[11px] text-rose-700/80 mt-0.5">
-              ล้างทุกอย่างใน LocalStorage: บิลขาย, ลูกค้า, สต็อก, เป้าหมาย, การเชื่อมต่อ Google และเริ่มระบบใหม่อย่างสมบูรณ์
+              ล้างทุกอย่างใน LocalStorage: บิลขาย, ลูกค้า, สต็อก, เป้าหมาย และเริ่มระบบใหม่อย่างสมบูรณ์
             </div>
           </div>
           <button
@@ -423,7 +422,7 @@ export const SettingsView: React.FC = () => {
                   <li>สต็อกสินค้า และประวัติการรับสต็อกเข้าทุกรายการ</li>
                   <li>ฐานข้อมูลลูกค้าสัมพันธ์ (CRM)</li>
                   <li>เป้าหมายการขายและส่วนแบ่งตลาด (Market Share)</li>
-                  <li>การตั้งค่าร้านค้าและรหัสเชื่อมต่อ Google Sheets</li>
+                  <li>การตั้งค่าร้านค้า</li>
                 </ul>
               </div>
 

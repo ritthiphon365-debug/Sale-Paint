@@ -23,13 +23,6 @@ export const HistoryView: React.FC = () => {
     sales,
     deleteSale,
     setModalOpen,
-    syncWithGoogle,
-    syncStatus,
-    spreadsheetUrl,
-    googleWebhookUrl,
-    spreadsheetId,
-    setActiveTab,
-    openSpreadsheetViewer,
   } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
@@ -80,37 +73,6 @@ export const HistoryView: React.FC = () => {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => syncWithGoogle(filteredSales)}
-            disabled={syncStatus === 'syncing' || filteredSales.length === 0}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs md:text-sm font-semibold px-3.5 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
-            title="ส่งยอดขายชุดนี้เข้า Google Sheets ทันที"
-          >
-            <RefreshCw className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
-            <span>{syncStatus === 'syncing' ? 'กำลังส่งข้อมูล...' : `ส่งเข้า Google Sheet (${filteredSales.length})`}</span>
-          </button>
-          {spreadsheetId && (
-            <button
-              onClick={openSpreadsheetViewer}
-              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs md:text-sm font-semibold px-3 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="เปิดดูชีตยอดขายในแอป"
-            >
-              <Eye className="w-4 h-4 text-emerald-600" />
-              <span>ดูชีตในแอป</span>
-            </button>
-          )}
-          {spreadsheetUrl && (
-            <a
-              href={spreadsheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 text-xs md:text-sm font-semibold px-3 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors"
-              title="เปิดดูไฟล์ Google Sheet ในแท็บใหม่"
-            >
-              <ExternalLink className="w-4 h-4" />
-              <span>เปิดแท็บใหม่</span>
-            </a>
-          )}
           <button
             onClick={() => setModalOpen('import-sales')}
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-semibold px-3.5 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"

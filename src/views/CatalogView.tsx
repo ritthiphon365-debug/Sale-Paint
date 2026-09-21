@@ -29,10 +29,6 @@ export const CatalogView: React.FC = () => {
     updateCatalogItem,
     deleteCatalogItem,
     importCatalogItems,
-    syncCatalogToGoogle,
-    catalogSyncTime,
-    googleConnected,
-    connectGoogle,
     brandSettings,
     showToast,
   } = useApp();
@@ -53,8 +49,6 @@ export const CatalogView: React.FC = () => {
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [googleSheetUrl, setGoogleSheetUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -193,17 +187,6 @@ export const CatalogView: React.FC = () => {
     setParsedImportItems([]);
   };
 
-  // Trigger Google Sheet sync
-  const handleSyncGoogle = async () => {
-    setIsSyncing(true);
-    try {
-      const url = await syncCatalogToGoogle();
-      if (url) setGoogleSheetUrl(url);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   // Smart preview stats for import
   const importSummary = useMemo(() => {
     if (!parsedImportItems.length) return { newCount: 0, existingCount: 0 };
@@ -243,19 +226,12 @@ export const CatalogView: React.FC = () => {
                 <Layers className="w-3.5 h-3.5" />
                 Product Catalog Management
               </span>
-              {catalogSyncTime && (
-                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  ซิงค์ล่าสุด {catalogSyncTime}
-                </span>
-              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               ฐานข้อมูลสินค้า (PC Product Catalog)
             </h1>
             <p className="text-sm text-slate-500 mt-1 max-w-2xl">
               จัดการรายการสินค้าเฉพาะประจำตัว PC รองรับการนำเข้าไฟล์ XLS ตรวจจับสินค้าใหม่อัตโนมัติ
-              และซิงค์เชื่อมโยงกับ Google Sheets
             </p>
           </div>
 
@@ -289,16 +265,6 @@ export const CatalogView: React.FC = () => {
             </button>
 
             <button
-              id="btn-sync-sheets"
-              onClick={handleSyncGoogle}
-              disabled={isSyncing}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-sm border border-indigo-200 transition-colors"
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'กำลังซิงค์...' : 'ซิงค์ Google Sheets'}
-            </button>
-
-            <button
               id="btn-add-product"
               onClick={handleOpenAdd}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm shadow-sm transition-all shadow-rose-600/20"
@@ -308,24 +274,6 @@ export const CatalogView: React.FC = () => {
             </button>
           </div>
         </div>
-
-        {/* Sync alert / status banner */}
-        {googleSheetUrl && (
-          <div className="mt-4 p-3 rounded-xl bg-indigo-50/80 border border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
-            <span className="flex items-center gap-2">
-              <CloudUpload className="w-4 h-4 text-indigo-600" />
-              ฐานข้อมูลสินค้าเชื่อมต่อไปยัง Google Sheet ในบัญชีของคุณเรียบร้อย
-            </span>
-            <a
-              href={googleSheetUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="font-bold underline flex items-center gap-1 hover:text-indigo-700"
-            >
-              เปิดดู Spreadsheet <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-        )}
 
         {/* Quick KPI stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-slate-100">
@@ -589,15 +537,6 @@ export const CatalogView: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Notice about Google Sheet sync */}
-              <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-100 text-xs text-indigo-800 flex items-start gap-2">
-                <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                <span>
-                  เมื่อกดยืนยัน ข้อมูลจะถูกบันทึกลงในระบบและซิงค์เชื่อมต่อไปยัง Google Sheet ในบัญชีของ PC ทันที
-                  เพื่อให้รายการที่เพิ่มใหม่ผ่านแอปอยู่ในไฟล์ต้นฉบับเดียวกัน
-                </span>
-              </div>
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
@@ -720,11 +659,6 @@ export const CatalogView: React.FC = () => {
                   className="w-full mt-1 px-3 py-2 rounded-xl text-sm bg-slate-50 border border-slate-200 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-rose-500"
                   placeholder="3450"
                 />
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500">
-                💡 เมื่อเพิ่มหรือแก้ไขสินค้า ข้อมูลจะถูกเชื่อมเข้าหน้าบันทึกยอดขาย
-                และบันทึกลง Google Sheet ประจำตัว PC โดยอัตโนมัติ
               </div>
 
               <div className="mt-6 flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
