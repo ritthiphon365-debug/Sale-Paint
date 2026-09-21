@@ -77,7 +77,10 @@ export const SettingsView: React.FC = () => {
   };
 
   const [showConfirmResetModal, setShowConfirmResetModal] = useState(false);
-  const [resetKeepCatalog, setResetKeepCatalog] = useState(false);
+  // 'empty' = เริ่มต้นแอปเปล่าจริง ๆ ไม่มีสินค้าตัวอย่าง (ค่าเริ่มต้นที่แนะนำ)
+  // 'keep' = คงฐานข้อมูลสินค้าจริงที่มีอยู่ไว้ ล้างแค่ยอดขาย/สต็อก
+  // 'sample' = ใส่สินค้าตัวอย่างกลับมา (ไว้สำหรับทดลองใช้งาน/สาธิตเท่านั้น)
+  const [resetCatalogMode, setResetCatalogMode] = useState<'empty' | 'keep' | 'sample'>('empty');
   const [confirmInput, setConfirmInput] = useState('');
   const [isResetting, setIsResetting] = useState(false);
 
@@ -88,7 +91,7 @@ export const SettingsView: React.FC = () => {
     }
     setIsResetting(true);
     try {
-      await resetToFactorySettings(resetKeepCatalog);
+      await resetToFactorySettings(resetCatalogMode);
       setShowConfirmResetModal(false);
       setConfirmInput('');
       setTimeout(() => {
@@ -424,23 +427,58 @@ export const SettingsView: React.FC = () => {
                 </ul>
               </div>
 
-              {/* Option to keep Catalog items */}
-              <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50/70 cursor-pointer hover:bg-slate-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={resetKeepCatalog}
-                  onChange={(e) => setResetKeepCatalog(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
-                />
-                <div>
-                  <div className="font-semibold text-slate-800 text-[11px]">
-                    คงฐานข้อมูลแคตตาล็อกสินค้า (Product Catalog) ไว้
+              {/* Option: what to do with the product catalog */}
+              <div className="space-y-2">
+                <div className="font-semibold text-slate-800 text-[11px]">ฐานข้อมูลแคตตาล็อกสินค้า (Product Catalog)</div>
+
+                <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50/70 cursor-pointer hover:bg-slate-50 transition-colors">
+                  <input
+                    type="radio"
+                    name="resetCatalogMode"
+                    checked={resetCatalogMode === 'empty'}
+                    onChange={() => setResetCatalogMode('empty')}
+                    className="mt-0.5 w-4 h-4 text-rose-600 focus:ring-rose-500 border-slate-300"
+                  />
+                  <div>
+                    <div className="font-semibold text-slate-800 text-[11px]">เริ่มต้นแอปเปล่า (แนะนำ)</div>
+                    <div className="text-[10px] text-slate-500">
+                      ล้างแคตตาล็อกสินค้าทั้งหมดให้ว่างเปล่า ไม่มีสินค้าตัวอย่างปนอยู่ ใส่สินค้าจริงของท่านเองผ่านหน้า Import
+                    </div>
                   </div>
-                  <div className="text-[10px] text-slate-500">
-                    หากติ๊กช่องนี้ จะไม่ต้องนำเข้าไฟล์ Excel รายการสีใหม่ ระบบจะล้างเฉพาะยอดขายและสต็อก
+                </label>
+
+                <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50/70 cursor-pointer hover:bg-slate-50 transition-colors">
+                  <input
+                    type="radio"
+                    name="resetCatalogMode"
+                    checked={resetCatalogMode === 'keep'}
+                    onChange={() => setResetCatalogMode('keep')}
+                    className="mt-0.5 w-4 h-4 text-rose-600 focus:ring-rose-500 border-slate-300"
+                  />
+                  <div>
+                    <div className="font-semibold text-slate-800 text-[11px]">คงฐานข้อมูลแคตตาล็อกสินค้าจริงไว้</div>
+                    <div className="text-[10px] text-slate-500">
+                      ไม่ต้องนำเข้าไฟล์ Excel รายการสีใหม่ ระบบจะล้างเฉพาะยอดขายและสต็อกคงเหลือ
+                    </div>
                   </div>
-                </div>
-              </label>
+                </label>
+
+                <label className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50/70 cursor-pointer hover:bg-slate-50 transition-colors">
+                  <input
+                    type="radio"
+                    name="resetCatalogMode"
+                    checked={resetCatalogMode === 'sample'}
+                    onChange={() => setResetCatalogMode('sample')}
+                    className="mt-0.5 w-4 h-4 text-rose-600 focus:ring-rose-500 border-slate-300"
+                  />
+                  <div>
+                    <div className="font-semibold text-slate-800 text-[11px]">ใส่สินค้าตัวอย่างกลับมา</div>
+                    <div className="text-[10px] text-slate-500">
+                      สำหรับทดลองใช้งาน/สาธิตเท่านั้น อย่าใช้ตัวเลือกนี้กับร้านที่ใช้งานจริง
+                    </div>
+                  </div>
+                </label>
+              </div>
 
               {/* Confirmation Input Field */}
               <div className="space-y-1.5 pt-1">
